@@ -24,7 +24,8 @@ pub struct Document {
     pub text: ropey::Rope,
 }
 
-pub type ResponsesCallback = Box<dyn FnOnce(&mut Context, EditorMeta, Vec<Value>) -> ()>;
+pub type ResponsesCallback =
+    Box<dyn FnOnce(&mut Context, EditorMeta, Vec<(LanguageId, Value)>) -> ()>;
 type BatchNumber = usize;
 type BatchCount = BatchNumber;
 
@@ -53,8 +54,14 @@ pub struct ServerSettings {
 
 pub struct Context {
     batch_counter: BatchNumber,
-    pub batches:
-        HashMap<BatchNumber, (BatchCount, Vec<serde_json::value::Value>, ResponsesCallback)>,
+    pub batches: HashMap<
+        BatchNumber,
+        (
+            BatchCount,
+            Vec<(LanguageId, serde_json::value::Value)>,
+            ResponsesCallback,
+        ),
+    >,
     pub completion_items: Vec<CompletionItem>,
     pub completion_items_timestamp: i32,
     // We currently only track one client's completion items, to simplify cleanup (else we
@@ -112,7 +119,7 @@ impl Context {
 
     pub fn call<
         R: Request,
-        F: for<'a> FnOnce(&'a mut Context, EditorMeta, R::Result) -> () + 'static,
+        F: for<'a> FnOnce(&'a mut Context, EditorMeta, Vec<(LanguageId, R::Result)>) -> () + 'static,
     >(
         &mut self,
         meta: EditorMeta,
@@ -145,10 +152,10 @@ impl Context {
             meta,
             ops,
             Box::new(
-                move |ctx: &mut Context, meta: EditorMeta, mut results: Vec<R::Result>| {
-                    if let Some(result) = results.pop() {
-                        callback(ctx, meta, result);
-                    }
+                move |ctx: &mut Context,
+                      meta: EditorMeta,
+                      mut results: Vec<(LanguageId, R::Result)>| {
+                    callback(ctx, meta, results)
                 },
             ),
         );
@@ -156,7 +163,7 @@ impl Context {
 
     pub fn batch_call<
         R: Request,
-        F: for<'a> FnOnce(&'a mut Context, EditorMeta, Vec<R::Result>) -> () + 'static,
+        F: for<'a> FnOnce(&'a mut Context, EditorMeta, Vec<(LanguageId, R::Result)>) -> () + 'static,
     >(
         &mut self,
         meta: EditorMeta,
@@ -173,9 +180,14 @@ impl Context {
                 ops.len(),
                 Vec::with_capacity(ops.len()),
                 Box::new(move |ctx, meta, vals| {
-                    let results: Vec<R::Result> = vals
+                    let results = vals
                         .into_iter()
-                        .map(|val| serde_json::from_value(val).expect("Failed to parse response"))
+                        .map(|(key, val)| {
+                            (
+                                key,
+                                serde_json::from_value(val).expect("Failed to parse response"),
+                            )
+                        })
                         .collect();
                     callback(ctx, meta, results)
                 }),
