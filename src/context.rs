@@ -8,7 +8,7 @@ use lsp_types::*;
 use serde::Deserialize;
 use std::borrow::Cow;
 use std::collections::hash_map::Entry;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::convert::TryInto;
 use std::path::PathBuf;
 use std::{fs, time};
@@ -33,11 +33,20 @@ pub struct OutstandingRequests {
     youngest: Option<Id>,
 }
 
+pub struct ServerSettings {
+    pub root_path: String,
+    pub offset_encoding: OffsetEncoding,
+    pub preferred_offset_encoding: Option<OffsetEncoding>,
+    pub capabilities: Option<ServerCapabilities>,
+    pub diagnostics: HashMap<String, Vec<Diagnostic>>,
+    pub code_lenses: HashMap<String, Vec<CodeLens>>,
+    pub tx: Sender<ServerMessage>,
+}
+
 pub struct Context {
     batch_counter: BatchNumber,
     pub batches:
         HashMap<BatchNumber, (BatchCount, Vec<serde_json::value::Value>, ResponsesCallback)>,
-    pub capabilities: Option<ServerCapabilities>,
     pub completion_items: Vec<CompletionItem>,
     pub completion_items_timestamp: i32,
     // We currently only track one client's completion items, to simplify cleanup (else we
@@ -46,34 +55,25 @@ pub struct Context {
     pub completion_last_client: Option<String>,
     pub config: Config,
     pub dynamic_config: DynamicConfig,
-    pub diagnostics: HashMap<String, Vec<Diagnostic>>,
-    pub code_lenses: HashMap<String, Vec<CodeLens>>,
     pub editor_tx: Sender<EditorResponse>,
-    pub lang_srv_tx: Sender<ServerMessage>,
-    pub language_id: String,
+    pub language_servers: BTreeMap<LanguageId, ServerSettings>,
     pub outstanding_requests: HashMap<(&'static str, String, Option<String>), OutstandingRequests>,
     pub pending_requests: Vec<EditorRequest>,
     pub pending_message_requests: VecDeque<(Id, ShowMessageRequestParams)>,
     pub request_counter: u64,
     pub response_waitlist: HashMap<Id, (EditorMeta, &'static str, BatchNumber, bool)>,
-    pub root_path: String,
     pub session: SessionId,
     pub documents: HashMap<String, Document>,
-    pub offset_encoding: OffsetEncoding,
-    pub preferred_offset_encoding: Option<OffsetEncoding>,
     pub work_done_progress: HashMap<NumberOrString, Option<WorkDoneProgressBegin>>,
     pub work_done_progress_report_timestamp: time::Instant,
     pub pending_file_watchers: HashMap<Option<PathBuf>, Vec<CompiledFileSystemWatcher>>,
 }
 
 pub struct ContextBuilder {
-    pub language_id: String,
+    pub language_servers: BTreeMap<LanguageId, ServerSettings>,
     pub initial_request: EditorRequest,
-    pub lang_srv_tx: Sender<ServerMessage>,
     pub editor_tx: Sender<EditorResponse>,
     pub config: Config,
-    pub root_path: String,
-    pub offset_encoding: Option<OffsetEncoding>,
 }
 
 impl Context {
@@ -82,27 +82,20 @@ impl Context {
         Context {
             batch_counter: 0,
             batches: HashMap::default(),
-            capabilities: None,
             completion_items: vec![],
             completion_items_timestamp: i32::max_value(),
             completion_last_client: None,
             config: params.config,
             dynamic_config: DynamicConfig::default(),
-            diagnostics: HashMap::default(),
-            code_lenses: HashMap::default(),
             editor_tx: params.editor_tx,
-            lang_srv_tx: params.lang_srv_tx,
-            language_id: params.language_id,
+            language_servers: params.language_servers,
             outstanding_requests: HashMap::default(),
             pending_requests: vec![params.initial_request],
             pending_message_requests: VecDeque::new(),
             request_counter: 0,
             response_waitlist: HashMap::default(),
-            root_path: params.root_path,
             session,
             documents: HashMap::default(),
-            offset_encoding: params.offset_encoding.unwrap_or(OffsetEncoding::Utf16),
-            preferred_offset_encoding: params.offset_encoding,
             work_done_progress: HashMap::default(),
             work_done_progress_report_timestamp: time::Instant::now(),
             pending_file_watchers: HashMap::default(),
