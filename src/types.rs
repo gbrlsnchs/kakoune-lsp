@@ -377,6 +377,12 @@ pub enum OffsetEncoding {
     Utf16,
 }
 
+impl Default for OffsetEncoding {
+    fn default() -> Self {
+        Self::Utf16
+    }
+}
+
 // An intermediate representation of the diagnostics on a line, for use with inlay diagnostics
 pub struct LineDiagnostics<'a> {
     pub range_end: Position,
