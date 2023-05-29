@@ -33,6 +33,14 @@ pub struct OutstandingRequests {
     youngest: Option<Id>,
 }
 
+/// Groups parameters for each request.
+pub enum RequestParams<T> {
+    /// Replicates the same list of parameters for all language servers in a context.
+    All(Vec<T>),
+    /// Uses different parameters for each language server in a context.
+    Each(HashMap<LanguageId, Vec<T>>),
+}
+
 pub struct ServerSettings {
     pub root_path: String,
     pub offset_encoding: OffsetEncoding,
@@ -108,13 +116,31 @@ impl Context {
     >(
         &mut self,
         meta: EditorMeta,
-        params: R::Params,
+        params: RequestParams<R::Params>,
         callback: F,
     ) where
         R::Params: IntoParams,
         R::Result: for<'a> Deserialize<'a>,
     {
-        let ops: Vec<R::Params> = vec![params];
+        let ops = match params {
+            RequestParams::All(params) => {
+                let mut ops = Vec::with_capacity(params.len() * self.language_servers.len());
+                for language_id in self.language_servers.keys() {
+                    for params in params {
+                        ops.push((language_id.clone(), params));
+                    }
+                }
+                ops
+            }
+            RequestParams::Each(params) => params
+                .into_iter()
+                .flat_map(|(key, ops)| {
+                    let ops: Vec<(LanguageId, <R as Request>::Params)> =
+                        ops.into_iter().map(|op| (key, op)).collect();
+                    ops
+                })
+                .collect(),
+        };
         self.batch_call::<R, _>(
             meta,
             ops,
@@ -134,7 +160,7 @@ impl Context {
     >(
         &mut self,
         meta: EditorMeta,
-        ops: Vec<R::Params>,
+        ops: Vec<(LanguageId, R::Params)>,
         callback: F,
     ) where
         R::Params: IntoParams,
@@ -155,7 +181,7 @@ impl Context {
                 }),
             ),
         );
-        for params in ops {
+        for (language_id, params) in ops {
             let params = params.into_params();
             if params.is_err() {
                 error!("Failed to convert params");
@@ -164,6 +190,8 @@ impl Context {
             let id = self.next_request_id();
             self.response_waitlist
                 .insert(id.clone(), (meta.clone(), R::METHOD, batch_id, false));
+
+            let srv = &self.language_servers[&language_id];
             add_outstanding_request(
                 self,
                 R::METHOD,
@@ -178,8 +206,8 @@ impl Context {
                 method: R::METHOD.into(),
                 params: params.unwrap(),
             };
-            if self
-                .lang_srv_tx
+            if srv
+                .tx
                 .send(ServerMessage::Request(Call::MethodCall(call)))
                 .is_err()
             {
