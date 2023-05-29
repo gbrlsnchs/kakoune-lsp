@@ -33,39 +33,42 @@ use serde::Serialize;
 pub fn start(
     to_editor: Sender<EditorResponse>,
     from_editor: Receiver<EditorRequest>,
-    route: &Route,
+    routes: &[Route],
     initial_request: EditorRequest,
     config: Config,
 ) {
-    let lang_srv: language_server_transport::LanguageServerTransport;
-    let offset_encoding;
-    {
-        // should be fine to unwrap because request was already routed which means language is configured
-        let lang = &config.language[&route.language];
-        offset_encoding = lang.offset_encoding;
-        lang_srv = match language_server_transport::start(&lang.command, &lang.args, &lang.envs) {
-            Ok(ls) => ls,
-            Err(err) => {
-                error!("failed to start language server: {}", err);
-                // If the server command isn't from a hook (e.g. auto-hover),
-                // then send a prominent error to the editor.
-                if !initial_request.meta.hook {
-                    let command = format!(
-                        "lsp-show-error {}",
-                        editor_quote(&format!("failed to start language server: {}", err)),
-                    );
-                    if to_editor
-                        .send(EditorResponse {
-                            meta: initial_request.meta,
-                            command: Cow::from(command),
-                        })
-                        .is_err()
-                    {
-                        error!("Failed to send command to editor");
+    let mut language_servers = HashMap::with_capacity(routes.len());
+    for route in routes {
+        {
+            // should be fine to unwrap because request was already routed which means language is configured
+            let lang = &config.language[&route.language];
+            let lang_srv =
+                match language_server_transport::start(&lang.command, &lang.args, &lang.envs) {
+                    Ok(ls) => ls,
+                    Err(err) => {
+                        error!("failed to start language server: {}", err);
+                        // If the server command isn't from a hook (e.g. auto-hover),
+                        // then send a prominent error to the editor.
+                        if !initial_request.meta.hook {
+                            let command = format!(
+                                "lsp-show-error {}",
+                                editor_quote(&format!("failed to start language server: {}", err)),
+                            );
+                            if to_editor
+                                .send(EditorResponse {
+                                    meta: initial_request.meta,
+                                    command: Cow::from(command),
+                                })
+                                .is_err()
+                            {
+                                error!("Failed to send command to editor");
+                            }
+                        }
+                        return;
                     }
-                }
-                return;
-            }
+                };
+
+            language_servers.insert(&route.language, (lang_srv, lang.offset_encoding));
         }
     }
 
@@ -75,15 +78,32 @@ pub fn start(
     initial_request_meta.write_response_to_fifo = false;
 
     let mut ctx = Context::new(ContextBuilder {
-        language_id: route.language.clone(),
         initial_request,
-        lang_srv_tx: lang_srv.to_lang_server.sender().clone(),
         editor_tx: to_editor,
         config,
-        root_path: route.root.clone(),
-        offset_encoding,
+        language_servers: routes
+            .iter()
+            .map(|route| {
+                let (tx, offset_encoding) = language_servers[&route.language];
+                let tx = tx.to_lang_server.sender().clone();
+
+                (
+                    route.language.clone(),
+                    ServerSettings {
+                        root_path: route.root.clone(),
+                        offset_encoding: offset_encoding.unwrap_or_default(),
+                        preferred_offset_encoding: offset_encoding,
+                        diagnostics: Default::default(),
+                        code_lenses: Default::default(),
+                        capabilities: None,
+                        tx,
+                    },
+                )
+            })
+            .collect(),
     });
 
+    // TODO: Fix everything below.
     initialize(&route.root, initial_request_meta.clone(), &mut ctx);
 
     struct FileWatcher {
