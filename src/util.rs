@@ -81,13 +81,18 @@ pub fn escape_tuple_element(s: &str) -> String {
 }
 
 /// Convert language filetypes configuration into a more lookup-friendly form.
-pub fn filetype_to_language_id_map(config: &Config) -> HashMap<String, String> {
-    let mut filetypes = HashMap::default();
+pub fn filetype_to_language_id_map(config: &Config) -> HashMap<String, Vec<String>> {
+    let mut filetypes: HashMap<String, Vec<String>> = HashMap::default();
+
     for (language_id, language) in &config.language {
         for filetype in &language.filetypes {
-            filetypes.insert(filetype.clone(), language_id.clone());
+            filetypes
+                .entry(filetype.clone())
+                .or_default()
+                .push(language_id.clone());
         }
     }
+
     filetypes
 }
 
