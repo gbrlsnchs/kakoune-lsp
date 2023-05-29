@@ -17,6 +17,7 @@ use crate::thread_worker::Worker;
 use crate::types::*;
 use crate::util::*;
 use crate::workspace;
+use crossbeam_channel::Select;
 use crossbeam_channel::{never, select, tick, Receiver, Sender};
 use jsonrpc_core::{Call, ErrorCode, MethodCall, Output, Params};
 use lsp_types::error_codes::CONTENT_MODIFIED;
@@ -113,8 +114,43 @@ pub fn start(
     let mut file_watcher: Option<FileWatcher> = None;
 
     'event_loop: loop {
-        select! {
-            recv(from_editor) -> msg => {
+        let from_file_watcher = file_watcher
+            .as_ref()
+            .map(|fw| fw.worker.receiver())
+            .unwrap_or(&never());
+        let from_pending_file_watcher = &file_watcher
+            .as_ref()
+            .and_then(
+                // If there are enqueud events, let's wait a bit for others to come in, to send
+                // them in batch.
+                |fw| {
+                    if fw.pending_file_events.is_empty() {
+                        None
+                    } else {
+                        Some(tick(Duration::from_millis(500)))
+                    }
+                },
+            )
+            .unwrap_or_else(never);
+
+        let mut sel = Select::new();
+        let srv_rxs: Vec<&Receiver<ServerMessage>> = language_servers
+            .values()
+            .map(|(srv, _)| srv.from_lang_server.receiver())
+            .collect();
+        // Server receivers are registered first so we can match their order
+        // with servers in the context.
+        for rx in srv_rxs {
+            sel.recv(rx);
+        }
+        let from_editor_op = sel.recv(&from_editor);
+        let from_file_watcher_op = sel.recv(from_file_watcher);
+        let from_pending_file_watcher_op = sel.recv(from_pending_file_watcher);
+
+        let op = sel.select();
+        match op.index() {
+            idx if idx == from_editor_op => {
+                let msg = op.recv(&from_editor);
                 if msg.is_err() {
                     break 'event_loop;
                 }
@@ -124,65 +160,115 @@ pub fn start(
                 // capabilities also serve as a marker of completing initialization
                 // we park all requests from editor before initialization is complete
                 // and then dispatch them
-                if ctx.capabilities.is_some() {
+                if ctx
+                    .language_servers
+                    .iter()
+                    .all(|(_, srv)| srv.capabilities.is_some())
+                {
                     dispatch_incoming_editor_request(msg, &mut ctx);
                 } else {
-                    debug!("Language server is not initialized, parking request");
-                    let err = "lsp-show-error 'language server is not initialized, parking request'";
+                    debug!("Language servers are still not initialized, parking request");
+                    let err =
+                        "lsp-show-error 'language servers are still not initialized, parking request'";
                     match &*msg.method {
                         notification::DidOpenTextDocument::METHOD => (),
                         notification::DidChangeTextDocument::METHOD => (),
                         notification::DidCloseTextDocument::METHOD => (),
                         notification::DidSaveTextDocument::METHOD => (),
-                        _ => if !msg.meta.hook {
+                        _ => {
+                            if !msg.meta.hook {
                                 ctx.exec(msg.meta.clone(), err.to_string());
+                            }
                         }
                     }
                     ctx.pending_requests.push(msg);
                 }
             }
-            recv(lang_srv.from_lang_server.receiver()) -> msg => {
+            i if i == from_file_watcher_op => {
+                let msg = op.recv(&from_file_watcher);
+
+                if msg.is_err() {
+                    break 'event_loop;
+                }
+                let mut file_events = msg.unwrap();
+                info!("received {} events from file watcher", file_events.len());
+                // Enqueue the events from the file watcher.
+                file_watcher
+                    .as_mut()
+                    .unwrap()
+                    .pending_file_events
+                    .extend(file_events.drain(..));
+            }
+            i if i == from_pending_file_watcher_op => {
+                let _msg = op.recv(&from_pending_file_watcher);
+
+                let fw = file_watcher.as_mut().unwrap();
+                if !fw.pending_file_events.is_empty() {
+                    let file_events = fw.pending_file_events.drain().collect();
+                    for srv in &ctx.language_servers {
+                        workspace_did_change_watched_files(file_events, &mut ctx);
+                    }
+                    fw.pending_file_events.clear();
+                }
+            }
+            i => {
+                let msg = op.recv(&srv_rxs[i]);
+                let (language_id, srv) = ctx.language_servers.iter().take(i).last().unwrap();
+
                 if msg.is_err() {
                     break 'event_loop;
                 }
                 let msg = msg.unwrap();
                 match msg {
-                    ServerMessage::Request(call) => {
-                        match call {
-                            Call::MethodCall(request) => {
-                              dispatch_server_request(initial_request_meta.clone(), request, &mut ctx);
-                            }
-                            Call::Notification(notification) => {
-                                dispatch_server_notification(
-                                    initial_request_meta.clone(),
-                                    &notification.method,
-                                    notification.params,
-                                    &mut ctx,
-                                );
-                            }
-                            Call::Invalid {id} => {
-                                error!("Invalid call from language server: {:?}", id);
-                            }
+                    ServerMessage::Request(call) => match call {
+                        Call::MethodCall(request) => {
+                            dispatch_server_request(
+                                initial_request_meta.clone(),
+                                request,
+                                &mut ctx,
+                            );
                         }
-                    }
+                        Call::Notification(notification) => {
+                            dispatch_server_notification(
+                                initial_request_meta.clone(),
+                                &notification.method,
+                                notification.params,
+                                &mut ctx,
+                            );
+                        }
+                        Call::Invalid { id } => {
+                            error!("Invalid call from language server: {:?}", id);
+                        }
+                    },
                     ServerMessage::Response(output) => {
                         match output {
                             Output::Success(success) => {
-                                if let Some((meta, method, batch_id, canceled)) = ctx.response_waitlist.remove(&success.id) {
+                                if let Some((meta, method, batch_id, canceled)) =
+                                    ctx.response_waitlist.remove(&success.id)
+                                {
                                     if canceled {
                                         continue;
                                     }
-                                    remove_outstanding_request(&mut ctx, method, meta.buffile.clone(), meta.client.clone(), &success.id);
+                                    remove_outstanding_request(
+                                        &mut ctx,
+                                        method,
+                                        meta.buffile.clone(),
+                                        meta.client.clone(),
+                                        &success.id,
+                                    );
                                     if meta.write_response_to_fifo {
                                         write_response_to_fifo(meta, &success);
                                         continue;
                                     }
-                                    if let Some((batch_amt, mut vals, callback)) = ctx.batches.remove(&batch_id) {
-                                        vals.push(success.result);
+                                    if let Some((batch_amt, mut vals, callback)) =
+                                        ctx.batches.remove(&batch_id)
+                                    {
+                                        vals.push((language_id.clone(), success.result));
                                         if batch_amt == 1 {
                                             callback(&mut ctx, meta, vals);
                                         } else {
-                                            ctx.batches.insert(batch_id, (batch_amt - 1, vals, callback));
+                                            ctx.batches
+                                                .insert(batch_id, (batch_amt - 1, vals, callback));
                                         }
                                     }
                                 } else {
@@ -195,30 +281,43 @@ pub fn start(
                                     if canceled {
                                         continue;
                                     }
-                                    remove_outstanding_request(&mut ctx, method, meta.buffile.clone(), meta.client.clone(), &failure.id);
+                                    remove_outstanding_request(
+                                        &mut ctx,
+                                        method,
+                                        meta.buffile.clone(),
+                                        meta.client.clone(),
+                                        &failure.id,
+                                    );
                                     error!("Error response from server: {:?}", failure);
                                     if meta.write_response_to_fifo {
                                         write_response_to_fifo(meta, failure);
                                         continue;
                                     }
                                     match failure.error.code {
-                                        code if code == ErrorCode::ServerError(CONTENT_MODIFIED) || method == request::CodeActionRequest::METHOD => {
+                                        code if code
+                                            == ErrorCode::ServerError(CONTENT_MODIFIED)
+                                            || method == request::CodeActionRequest::METHOD =>
+                                        {
                                             // Nothing to do, but sending command back to the editor is required to handle case when
                                             // editor is blocked waiting for response via fifo.
                                             ctx.exec(meta, "nop".to_string());
-                                        },
+                                        }
                                         code => {
                                             let msg = match code {
                                                 ErrorCode::MethodNotFound => format!(
                                                     "{} language server doesn't support method {}",
-                                                    ctx.language_id, method
+                                                    language_id, method
                                                 ),
                                                 _ => format!(
                                                     "{} language server error: {}",
-                                                    ctx.language_id, editor_quote(&failure.error.message)
+                                                    language_id,
+                                                    editor_quote(&failure.error.message)
                                                 ),
                                             };
-                                            ctx.exec(meta, format!("lsp-show-error {}", editor_quote(&msg)));
+                                            ctx.exec(
+                                                meta,
+                                                format!("lsp-show-error {}", editor_quote(&msg)),
+                                            );
                                         }
                                     }
                                 } else {
@@ -228,30 +327,6 @@ pub fn start(
                             }
                         }
                     }
-                }
-            }
-            recv(file_watcher.as_ref().map(|fw| fw.worker.receiver()).unwrap_or(&never())) -> msg => {
-                if msg.is_err() {
-                    break 'event_loop;
-                }
-                let mut file_events = msg.unwrap();
-                info!("received {} events from file watcher", file_events.len());
-                // Enqueue the events from the file watcher.
-                file_watcher.as_mut().unwrap().pending_file_events.extend(file_events.drain(..));
-            }
-            recv(file_watcher.as_ref().and_then(
-                // If there are enqueud events, let's wait a bit for others to come in, to send
-                // them in batch.
-                |fw| if fw.pending_file_events.is_empty() { None } else {
-                    Some(tick(Duration::from_millis(500)))
-                })
-                .unwrap_or_else(never)
-            ) -> _ => {
-                let fw = file_watcher.as_mut().unwrap();
-                if !fw.pending_file_events.is_empty() {
-                    let file_events = fw.pending_file_events.drain().collect();
-                    workspace_did_change_watched_files(file_events, &mut ctx);
-                    fw.pending_file_events.clear();
                 }
             }
         }
