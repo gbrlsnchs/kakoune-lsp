@@ -8,11 +8,12 @@ use itertools::Itertools;
 use lsp_types::notification::*;
 use lsp_types::request::*;
 use lsp_types::*;
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::process;
 use url::Url;
 
-pub fn initialize(root_path: &str, meta: EditorMeta, ctx: &mut Context) {
+pub fn initialize(meta: EditorMeta, ctx: &mut Context) {
     let initialization_options = request_initialization_options_from_kakoune(&meta, ctx);
     let symbol_kind_capability = Some(SymbolKindCapability {
         value_set: Some(vec![
@@ -45,347 +46,393 @@ pub fn initialize(root_path: &str, meta: EditorMeta, ctx: &mut Context) {
         ]),
     });
     #[allow(deprecated)] // for root_path
-    let params = InitializeParams {
-        capabilities: ClientCapabilities {
-            workspace: Some(WorkspaceClientCapabilities {
-                apply_edit: Some(true),
-                workspace_edit: Some(WorkspaceEditClientCapabilities {
-                    document_changes: Some(true),
-                    resource_operations: Some(vec![
-                        ResourceOperationKind::Create,
-                        ResourceOperationKind::Delete,
-                        ResourceOperationKind::Rename,
-                    ]),
-                    failure_handling: Some(FailureHandlingKind::Abort),
-                    normalizes_line_endings: Some(false),
-                    change_annotation_support: Some(
-                        ChangeAnnotationWorkspaceEditClientCapabilities {
-                            groups_on_label: None,
-                        },
-                    ),
-                }),
-                did_change_configuration: Some(DynamicRegistrationClientCapabilities {
-                    dynamic_registration: Some(false),
-                }),
-                did_change_watched_files: Some(DidChangeWatchedFilesClientCapabilities {
-                    dynamic_registration: Some(true),
-                    relative_pattern_support: Some(true),
-                }),
-                symbol: Some(WorkspaceSymbolClientCapabilities {
-                    dynamic_registration: Some(false),
-                    symbol_kind: symbol_kind_capability.clone(),
-                    tag_support: None,
-                    resolve_support: None,
-                }),
-                execute_command: Some(DynamicRegistrationClientCapabilities {
-                    dynamic_registration: Some(false),
-                }),
-                workspace_folders: Some(true),
-                configuration: Some(true),
-                semantic_tokens: None,
-                code_lens: Some(CodeLensWorkspaceClientCapabilities {
-                    refresh_support: None,
-                }),
-                file_operations: None,
-                inline_value: None,
-                inlay_hint: Some(InlayHintWorkspaceClientCapabilities {
-                    refresh_support: Some(false),
-                }),
-            }),
-            text_document: Some(TextDocumentClientCapabilities {
-                synchronization: Some(TextDocumentSyncClientCapabilities {
-                    dynamic_registration: Some(false),
-                    will_save: Some(false),
-                    will_save_wait_until: Some(false),
-                    did_save: Some(true),
-                }),
-                completion: Some(CompletionClientCapabilities {
-                    dynamic_registration: Some(false),
-                    completion_item: Some(CompletionItemCapability {
-                        snippet_support: Some(ctx.config.snippet_support),
-                        commit_characters_support: Some(false),
-                        documentation_format: Some(vec![
-                            MarkupKind::Markdown,
-                            MarkupKind::PlainText,
-                        ]),
-                        deprecated_support: Some(false),
-                        preselect_support: Some(false),
-                        tag_support: None,
-                        insert_replace_support: None,
-                        resolve_support: Some(CompletionItemCapabilityResolveSupport {
-                            properties: vec![
-                                "additionalTextEdits".to_string(),
-                                "detail".to_string(),
-                                "documentation".to_string(),
-                            ],
-                        }),
-                        insert_text_mode_support: None,
-                        label_details_support: None,
-                    }),
-                    completion_item_kind: Some(CompletionItemKindCapability {
-                        value_set: Some(vec![
-                            CompletionItemKind::TEXT,
-                            CompletionItemKind::METHOD,
-                            CompletionItemKind::FUNCTION,
-                            CompletionItemKind::CONSTRUCTOR,
-                            CompletionItemKind::FIELD,
-                            CompletionItemKind::VARIABLE,
-                            CompletionItemKind::CLASS,
-                            CompletionItemKind::INTERFACE,
-                            CompletionItemKind::MODULE,
-                            CompletionItemKind::PROPERTY,
-                            CompletionItemKind::UNIT,
-                            CompletionItemKind::VALUE,
-                            CompletionItemKind::ENUM,
-                            CompletionItemKind::KEYWORD,
-                            CompletionItemKind::SNIPPET,
-                            CompletionItemKind::COLOR,
-                            CompletionItemKind::FILE,
-                            CompletionItemKind::REFERENCE,
-                            CompletionItemKind::FOLDER,
-                            CompletionItemKind::ENUM_MEMBER,
-                            CompletionItemKind::CONSTANT,
-                            CompletionItemKind::STRUCT,
-                            CompletionItemKind::EVENT,
-                            CompletionItemKind::OPERATOR,
-                            CompletionItemKind::TYPE_PARAMETER,
-                        ]),
-                    }),
-                    context_support: Some(false),
-                    insert_text_mode: None,
-                    completion_list: None,
-                }),
-                hover: Some(HoverClientCapabilities {
-                    dynamic_registration: Some(false),
-                    content_format: Some(vec![MarkupKind::Markdown, MarkupKind::PlainText]),
-                }),
-                signature_help: Some(SignatureHelpClientCapabilities {
-                    dynamic_registration: Some(false),
-                    signature_information: Some(SignatureInformationSettings {
-                        documentation_format: Some(vec![MarkupKind::PlainText]),
-                        parameter_information: Some(ParameterInformationSettings {
-                            label_offset_support: Some(false),
-                        }),
-                        active_parameter_support: None,
-                    }),
-                    context_support: Some(false),
-                }),
-                references: Some(DynamicRegistrationClientCapabilities {
-                    dynamic_registration: Some(false),
-                }),
-                document_highlight: Some(DynamicRegistrationClientCapabilities {
-                    dynamic_registration: Some(false),
-                }),
-                document_symbol: Some(DocumentSymbolClientCapabilities {
-                    dynamic_registration: Some(false),
-                    symbol_kind: symbol_kind_capability,
-                    hierarchical_document_symbol_support: Some(true),
-                    tag_support: None,
-                }),
-                formatting: Some(DynamicRegistrationClientCapabilities {
-                    dynamic_registration: Some(false),
-                }),
-                range_formatting: Some(DynamicRegistrationClientCapabilities {
-                    dynamic_registration: Some(false),
-                }),
-                on_type_formatting: Some(DynamicRegistrationClientCapabilities {
-                    dynamic_registration: Some(false),
-                }),
-                declaration: Some(GotoCapability {
-                    dynamic_registration: Some(false),
-                    link_support: Some(false),
-                }),
-                definition: Some(GotoCapability {
-                    dynamic_registration: Some(false),
-                    link_support: Some(false),
-                }),
-                type_definition: Some(GotoCapability {
-                    dynamic_registration: Some(false),
-                    link_support: Some(false),
-                }),
-                implementation: Some(GotoCapability {
-                    dynamic_registration: Some(false),
-                    link_support: Some(false),
-                }),
-                code_action: Some(CodeActionClientCapabilities {
-                    dynamic_registration: Some(false),
-                    code_action_literal_support: Some(CodeActionLiteralSupport {
-                        code_action_kind: CodeActionKindLiteralSupport {
-                            value_set: [
-                                "quickfix",
-                                "refactor",
-                                "refactor.extract",
-                                "refactor.inline",
-                                "refactor.rewrite",
-                                "source",
-                                "source.organizeImports",
-                            ]
-                            .iter()
-                            .map(|s| s.to_string())
-                            .collect(),
-                        },
-                    }),
-                    is_preferred_support: Some(false),
-                    disabled_support: None,
-                    data_support: None,
-                    resolve_support: Some(CodeActionCapabilityResolveSupport {
-                        properties: ["edit"].iter().map(|s| s.to_string()).collect(),
-                    }),
-                    honors_change_annotations: None,
-                }),
-                code_lens: Some(DynamicRegistrationClientCapabilities {
-                    dynamic_registration: Some(false),
-                }),
-                document_link: Some(DocumentLinkClientCapabilities {
-                    dynamic_registration: Some(false),
-                    tooltip_support: Some(false),
-                }),
-                color_provider: Some(DynamicRegistrationClientCapabilities {
-                    dynamic_registration: Some(false),
-                }),
-                rename: Some(RenameClientCapabilities {
-                    dynamic_registration: Some(false),
-                    prepare_support: Some(false),
-                    prepare_support_default_behavior: None,
-                    honors_change_annotations: None,
-                }),
-                publish_diagnostics: Some(PublishDiagnosticsClientCapabilities {
-                    related_information: Some(true),
-                    tag_support: None,
-                    version_support: None,
-                    code_description_support: None,
-                    data_support: None,
-                }),
-                folding_range: None,
-                selection_range: Some(SelectionRangeClientCapabilities {
-                    dynamic_registration: None,
-                }),
-                semantic_tokens: Some(SemanticTokensClientCapabilities {
-                    dynamic_registration: Some(false),
-                    requests: SemanticTokensClientCapabilitiesRequests {
-                        range: Some(false),
-                        full: Some(SemanticTokensFullOptions::Bool(true)),
+    let params = ctx
+        .language_servers
+        .iter()
+        .enumerate()
+        .map(
+            |(
+                idx,
+                (
+                    language_id,
+                    ServerSettings {
+                        root_path,
+                        offset_encoding,
+                        preferred_offset_encoding,
+                        ..
                     },
-                    token_types: ctx
-                        .config
-                        .semantic_tokens
-                        .faces
-                        .iter()
-                        .map(|token_config| token_config.token.clone().into())
-                        // Collect into set first to remove duplicates
-                        .collect::<HashSet<SemanticTokenType>>()
-                        .into_iter()
-                        .collect(),
-                    token_modifiers: ctx
-                        .config
-                        .semantic_tokens
-                        .faces
-                        .iter()
-                        // Get all modifiers used in token definitions
-                        .flat_map(|token_config| token_config.modifiers.clone())
-                        // Collect into set first to remove duplicates
-                        .collect::<HashSet<SemanticTokenModifier>>()
-                        .into_iter()
-                        .collect(),
-                    formats: vec![TokenFormat::RELATIVE],
-                    overlapping_token_support: None,
-                    multiline_token_support: None,
-                    augments_syntax_tokens: None,
-                    server_cancel_support: Some(true),
-                }),
-                linked_editing_range: None,
-                call_hierarchy: Some(CallHierarchyClientCapabilities {
-                    dynamic_registration: Some(false),
-                }),
-                moniker: None,
-                inline_value: None,
-                type_hierarchy: None,
-                inlay_hint: Some(InlayHintClientCapabilities {
-                    dynamic_registration: Some(false),
-                    resolve_support: None,
-                }),
-            }),
-            window: Some(WindowClientCapabilities {
-                work_done_progress: Some(true),
-                show_message: Some(ShowMessageRequestClientCapabilities {
-                    message_action_item: Some(MessageActionItemCapabilities {
-                        additional_properties_support: Some(true),
-                    }),
-                }),
-                show_document: None,
-            }),
-            general: Some(GeneralClientCapabilities {
-                regular_expressions: Some(RegularExpressionsClientCapabilities {
-                    engine: "Rust regex".to_string(),
-                    version: None,
-                }),
-                markdown: Some(MarkdownClientCapabilities {
-                    parser: "kak-lsp".to_string(),
-                    version: Some(env!("CARGO_PKG_VERSION").to_string()),
-                    allowed_tags: None,
-                }),
-                stale_request_support: None,
-                position_encodings: Some(match ctx.preferred_offset_encoding {
-                    None | Some(OffsetEncoding::Utf8) => {
-                        vec![PositionEncodingKind::UTF8, PositionEncodingKind::UTF16]
-                    }
-                    Some(OffsetEncoding::Utf16) => {
-                        vec![PositionEncodingKind::UTF16, PositionEncodingKind::UTF8]
-                    }
-                }),
-            }),
-            offset_encoding: Some(
-                match ctx.preferred_offset_encoding {
-                    None | Some(OffsetEncoding::Utf8) => ["utf-8", "utf-16"],
-                    Some(OffsetEncoding::Utf16) => ["utf-16", "utf-8"],
-                }
-                .iter()
-                .map(|s| s.to_string())
-                .collect(),
-            ),
-            experimental: None,
-        },
-        initialization_options,
-        process_id: Some(process::id()),
-        root_uri: Some(Url::from_file_path(root_path).unwrap()),
-        root_path: Some(root_path.to_string()),
-        trace: Some(TraceValue::Off),
-        workspace_folders: Some(vec![WorkspaceFolder {
-            uri: Url::from_file_path(root_path).unwrap(),
-            name: root_path.to_string(),
-        }]),
-        client_info: Some(ClientInfo {
-            name: env!("CARGO_PKG_NAME").to_string(),
-            version: Some(env!("CARGO_PKG_VERSION").to_string()),
-        }),
-        locale: None,
-    };
+                ),
+            )| {
+                (
+                    language_id.clone(),
+                    vec![InitializeParams {
+                        capabilities: ClientCapabilities {
+                            workspace: Some(WorkspaceClientCapabilities {
+                                apply_edit: Some(true),
+                                workspace_edit: Some(WorkspaceEditClientCapabilities {
+                                    document_changes: Some(true),
+                                    resource_operations: Some(vec![
+                                        ResourceOperationKind::Create,
+                                        ResourceOperationKind::Delete,
+                                        ResourceOperationKind::Rename,
+                                    ]),
+                                    failure_handling: Some(FailureHandlingKind::Abort),
+                                    normalizes_line_endings: Some(false),
+                                    change_annotation_support: Some(
+                                        ChangeAnnotationWorkspaceEditClientCapabilities {
+                                            groups_on_label: None,
+                                        },
+                                    ),
+                                }),
+                                did_change_configuration: Some(
+                                    DynamicRegistrationClientCapabilities {
+                                        dynamic_registration: Some(false),
+                                    },
+                                ),
+                                did_change_watched_files: Some(
+                                    DidChangeWatchedFilesClientCapabilities {
+                                        dynamic_registration: Some(true),
+                                        relative_pattern_support: Some(true),
+                                    },
+                                ),
+                                symbol: Some(WorkspaceSymbolClientCapabilities {
+                                    dynamic_registration: Some(false),
+                                    symbol_kind: symbol_kind_capability.clone(),
+                                    tag_support: None,
+                                    resolve_support: None,
+                                }),
+                                execute_command: Some(DynamicRegistrationClientCapabilities {
+                                    dynamic_registration: Some(false),
+                                }),
+                                workspace_folders: Some(true),
+                                configuration: Some(true),
+                                semantic_tokens: None,
+                                code_lens: Some(CodeLensWorkspaceClientCapabilities {
+                                    refresh_support: None,
+                                }),
+                                file_operations: None,
+                                inline_value: None,
+                                inlay_hint: Some(InlayHintWorkspaceClientCapabilities {
+                                    refresh_support: Some(false),
+                                }),
+                            }),
+                            text_document: Some(TextDocumentClientCapabilities {
+                                synchronization: Some(TextDocumentSyncClientCapabilities {
+                                    dynamic_registration: Some(false),
+                                    will_save: Some(false),
+                                    will_save_wait_until: Some(false),
+                                    did_save: Some(true),
+                                }),
+                                completion: Some(CompletionClientCapabilities {
+                                    dynamic_registration: Some(false),
+                                    completion_item: Some(CompletionItemCapability {
+                                        snippet_support: Some(ctx.config.snippet_support),
+                                        commit_characters_support: Some(false),
+                                        documentation_format: Some(vec![
+                                            MarkupKind::Markdown,
+                                            MarkupKind::PlainText,
+                                        ]),
+                                        deprecated_support: Some(false),
+                                        preselect_support: Some(false),
+                                        tag_support: None,
+                                        insert_replace_support: None,
+                                        resolve_support: Some(
+                                            CompletionItemCapabilityResolveSupport {
+                                                properties: vec![
+                                                    "additionalTextEdits".to_string(),
+                                                    "detail".to_string(),
+                                                    "documentation".to_string(),
+                                                ],
+                                            },
+                                        ),
+                                        insert_text_mode_support: None,
+                                        label_details_support: None,
+                                    }),
+                                    completion_item_kind: Some(CompletionItemKindCapability {
+                                        value_set: Some(vec![
+                                            CompletionItemKind::TEXT,
+                                            CompletionItemKind::METHOD,
+                                            CompletionItemKind::FUNCTION,
+                                            CompletionItemKind::CONSTRUCTOR,
+                                            CompletionItemKind::FIELD,
+                                            CompletionItemKind::VARIABLE,
+                                            CompletionItemKind::CLASS,
+                                            CompletionItemKind::INTERFACE,
+                                            CompletionItemKind::MODULE,
+                                            CompletionItemKind::PROPERTY,
+                                            CompletionItemKind::UNIT,
+                                            CompletionItemKind::VALUE,
+                                            CompletionItemKind::ENUM,
+                                            CompletionItemKind::KEYWORD,
+                                            CompletionItemKind::SNIPPET,
+                                            CompletionItemKind::COLOR,
+                                            CompletionItemKind::FILE,
+                                            CompletionItemKind::REFERENCE,
+                                            CompletionItemKind::FOLDER,
+                                            CompletionItemKind::ENUM_MEMBER,
+                                            CompletionItemKind::CONSTANT,
+                                            CompletionItemKind::STRUCT,
+                                            CompletionItemKind::EVENT,
+                                            CompletionItemKind::OPERATOR,
+                                            CompletionItemKind::TYPE_PARAMETER,
+                                        ]),
+                                    }),
+                                    context_support: Some(false),
+                                    insert_text_mode: None,
+                                    completion_list: None,
+                                }),
+                                hover: Some(HoverClientCapabilities {
+                                    dynamic_registration: Some(false),
+                                    content_format: Some(vec![
+                                        MarkupKind::Markdown,
+                                        MarkupKind::PlainText,
+                                    ]),
+                                }),
+                                signature_help: Some(SignatureHelpClientCapabilities {
+                                    dynamic_registration: Some(false),
+                                    signature_information: Some(SignatureInformationSettings {
+                                        documentation_format: Some(vec![MarkupKind::PlainText]),
+                                        parameter_information: Some(ParameterInformationSettings {
+                                            label_offset_support: Some(false),
+                                        }),
+                                        active_parameter_support: None,
+                                    }),
+                                    context_support: Some(false),
+                                }),
+                                references: Some(DynamicRegistrationClientCapabilities {
+                                    dynamic_registration: Some(false),
+                                }),
+                                document_highlight: Some(DynamicRegistrationClientCapabilities {
+                                    dynamic_registration: Some(false),
+                                }),
+                                document_symbol: Some(DocumentSymbolClientCapabilities {
+                                    dynamic_registration: Some(false),
+                                    symbol_kind: symbol_kind_capability,
+                                    hierarchical_document_symbol_support: Some(true),
+                                    tag_support: None,
+                                }),
+                                formatting: Some(DynamicRegistrationClientCapabilities {
+                                    dynamic_registration: Some(false),
+                                }),
+                                range_formatting: Some(DynamicRegistrationClientCapabilities {
+                                    dynamic_registration: Some(false),
+                                }),
+                                on_type_formatting: Some(DynamicRegistrationClientCapabilities {
+                                    dynamic_registration: Some(false),
+                                }),
+                                declaration: Some(GotoCapability {
+                                    dynamic_registration: Some(false),
+                                    link_support: Some(false),
+                                }),
+                                definition: Some(GotoCapability {
+                                    dynamic_registration: Some(false),
+                                    link_support: Some(false),
+                                }),
+                                type_definition: Some(GotoCapability {
+                                    dynamic_registration: Some(false),
+                                    link_support: Some(false),
+                                }),
+                                implementation: Some(GotoCapability {
+                                    dynamic_registration: Some(false),
+                                    link_support: Some(false),
+                                }),
+                                code_action: Some(CodeActionClientCapabilities {
+                                    dynamic_registration: Some(false),
+                                    code_action_literal_support: Some(CodeActionLiteralSupport {
+                                        code_action_kind: CodeActionKindLiteralSupport {
+                                            value_set: [
+                                                "quickfix",
+                                                "refactor",
+                                                "refactor.extract",
+                                                "refactor.inline",
+                                                "refactor.rewrite",
+                                                "source",
+                                                "source.organizeImports",
+                                            ]
+                                            .iter()
+                                            .map(|s| s.to_string())
+                                            .collect(),
+                                        },
+                                    }),
+                                    is_preferred_support: Some(false),
+                                    disabled_support: None,
+                                    data_support: None,
+                                    resolve_support: Some(CodeActionCapabilityResolveSupport {
+                                        properties: ["edit"]
+                                            .iter()
+                                            .map(|s| s.to_string())
+                                            .collect(),
+                                    }),
+                                    honors_change_annotations: None,
+                                }),
+                                code_lens: Some(DynamicRegistrationClientCapabilities {
+                                    dynamic_registration: Some(false),
+                                }),
+                                document_link: Some(DocumentLinkClientCapabilities {
+                                    dynamic_registration: Some(false),
+                                    tooltip_support: Some(false),
+                                }),
+                                color_provider: Some(DynamicRegistrationClientCapabilities {
+                                    dynamic_registration: Some(false),
+                                }),
+                                rename: Some(RenameClientCapabilities {
+                                    dynamic_registration: Some(false),
+                                    prepare_support: Some(false),
+                                    prepare_support_default_behavior: None,
+                                    honors_change_annotations: None,
+                                }),
+                                publish_diagnostics: Some(PublishDiagnosticsClientCapabilities {
+                                    related_information: Some(true),
+                                    tag_support: None,
+                                    version_support: None,
+                                    code_description_support: None,
+                                    data_support: None,
+                                }),
+                                folding_range: None,
+                                selection_range: Some(SelectionRangeClientCapabilities {
+                                    dynamic_registration: None,
+                                }),
+                                semantic_tokens: Some(SemanticTokensClientCapabilities {
+                                    dynamic_registration: Some(false),
+                                    requests: SemanticTokensClientCapabilitiesRequests {
+                                        range: Some(false),
+                                        full: Some(SemanticTokensFullOptions::Bool(true)),
+                                    },
+                                    token_types: ctx
+                                        .config
+                                        .semantic_tokens
+                                        .faces
+                                        .iter()
+                                        .map(|token_config| token_config.token.clone().into())
+                                        // Collect into set first to remove duplicates
+                                        .collect::<HashSet<SemanticTokenType>>()
+                                        .into_iter()
+                                        .collect(),
+                                    token_modifiers: ctx
+                                        .config
+                                        .semantic_tokens
+                                        .faces
+                                        .iter()
+                                        // Get all modifiers used in token definitions
+                                        .flat_map(|token_config| token_config.modifiers.clone())
+                                        // Collect into set first to remove duplicates
+                                        .collect::<HashSet<SemanticTokenModifier>>()
+                                        .into_iter()
+                                        .collect(),
+                                    formats: vec![TokenFormat::RELATIVE],
+                                    overlapping_token_support: None,
+                                    multiline_token_support: None,
+                                    augments_syntax_tokens: None,
+                                    server_cancel_support: Some(true),
+                                }),
+                                linked_editing_range: None,
+                                call_hierarchy: Some(CallHierarchyClientCapabilities {
+                                    dynamic_registration: Some(false),
+                                }),
+                                moniker: None,
+                                inline_value: None,
+                                type_hierarchy: None,
+                                inlay_hint: Some(InlayHintClientCapabilities {
+                                    dynamic_registration: Some(false),
+                                    resolve_support: None,
+                                }),
+                            }),
+                            window: Some(WindowClientCapabilities {
+                                work_done_progress: Some(true),
+                                show_message: Some(ShowMessageRequestClientCapabilities {
+                                    message_action_item: Some(MessageActionItemCapabilities {
+                                        additional_properties_support: Some(true),
+                                    }),
+                                }),
+                                show_document: None,
+                            }),
+                            general: Some(GeneralClientCapabilities {
+                                regular_expressions: Some(RegularExpressionsClientCapabilities {
+                                    engine: "Rust regex".to_string(),
+                                    version: None,
+                                }),
+                                markdown: Some(MarkdownClientCapabilities {
+                                    parser: "kak-lsp".to_string(),
+                                    version: Some(env!("CARGO_PKG_VERSION").to_string()),
+                                    allowed_tags: None,
+                                }),
+                                stale_request_support: None,
+                                position_encodings: Some(match preferred_offset_encoding {
+                                    None | Some(OffsetEncoding::Utf8) => {
+                                        vec![
+                                            PositionEncodingKind::UTF8,
+                                            PositionEncodingKind::UTF16,
+                                        ]
+                                    }
+                                    Some(OffsetEncoding::Utf16) => {
+                                        vec![
+                                            PositionEncodingKind::UTF16,
+                                            PositionEncodingKind::UTF8,
+                                        ]
+                                    }
+                                }),
+                            }),
+                            offset_encoding: Some(
+                                match preferred_offset_encoding {
+                                    None | Some(OffsetEncoding::Utf8) => ["utf-8", "utf-16"],
+                                    Some(OffsetEncoding::Utf16) => ["utf-16", "utf-8"],
+                                }
+                                .iter()
+                                .map(|s| s.to_string())
+                                .collect(),
+                            ),
+                            experimental: None,
+                        },
+                        initialization_options: initialization_options[idx],
+                        process_id: Some(process::id()),
+                        root_uri: Some(Url::from_file_path(root_path).unwrap()),
+                        root_path: Some(root_path.to_string()),
+                        trace: Some(TraceValue::Off),
+                        workspace_folders: Some(vec![WorkspaceFolder {
+                            uri: Url::from_file_path(root_path).unwrap(),
+                            name: root_path.to_string(),
+                        }]),
+                        client_info: Some(ClientInfo {
+                            name: env!("CARGO_PKG_NAME").to_string(),
+                            version: Some(env!("CARGO_PKG_VERSION").to_string()),
+                        }),
+                        locale: None,
+                    }],
+                )
+            },
+        )
+        .collect();
 
-    ctx.call::<Initialize, _>(meta, params, move |ctx: &mut Context, _meta, result| {
-        ctx.offset_encoding = result
-            .capabilities
-            .position_encoding
-            .as_ref()
-            .map(|enc| enc.as_str())
-            .or(result.offset_encoding.as_deref())
-            .map(|encoding| match encoding {
-                "utf-8" => OffsetEncoding::Utf8,
-                "utf-16" => OffsetEncoding::Utf16,
-                encoding => {
-                    error!("Language server sent unsupported offset encoding: {encoding}");
-                    OffsetEncoding::Utf16
-                }
-            })
-            .unwrap_or(OffsetEncoding::Utf16);
-        if matches!(
-            (ctx.preferred_offset_encoding, ctx.offset_encoding),
-            (Some(OffsetEncoding::Utf8), OffsetEncoding::Utf16)) {
-                warn!(
-                    "Requested offset encoding utf-8 is not supported by server, falling back to utf-16"
-                );
+    ctx.call::<Initialize, _>(meta, RequestParams::Each(params) , move |ctx: &mut Context, _meta, results| {
+        let results: HashMap<_,_> = results.into_iter().collect();
+
+        for (language_id, srv_settings) in &mut ctx.language_servers {
+            let result = results[language_id];
+            srv_settings.offset_encoding = result
+                .capabilities
+                .position_encoding
+                .as_ref()
+                .map(|enc| enc.as_str())
+                .or(result.offset_encoding.as_deref())
+                .map(|encoding| match encoding {
+                    "utf-8" => OffsetEncoding::Utf8,
+                    "utf-16" => OffsetEncoding::Utf16,
+                    encoding => {
+                        error!("Language server sent unsupported offset encoding: {encoding}");
+                        OffsetEncoding::Utf16
+                    }
+                })
+                .unwrap_or_default();
+            if matches!(
+                (srv_settings.preferred_offset_encoding, srv_settings.offset_encoding),
+                (Some(OffsetEncoding::Utf8), OffsetEncoding::Utf16)) {
+                    warn!(
+                        "Requested offset encoding utf-8 is not supported by server, falling back to utf-16"
+                    );
+            }
+            srv_settings.capabilities = Some(result.capabilities);
+            ctx.notify::<Initialized>(InitializedParams {});
         }
-        ctx.capabilities = Some(result.capabilities);
-        ctx.notify::<Initialized>(InitializedParams {});
         controller::dispatch_pending_editor_requests(ctx)
     });
 }

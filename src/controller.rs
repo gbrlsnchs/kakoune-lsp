@@ -104,8 +104,7 @@ pub fn start(
             .collect(),
     });
 
-    // TODO: Fix everything below.
-    initialize(&route.root, initial_request_meta.clone(), &mut ctx);
+    initialize(initial_request_meta.clone(), &mut ctx);
 
     struct FileWatcher {
         pending_file_events: HashSet<FileEvent>,

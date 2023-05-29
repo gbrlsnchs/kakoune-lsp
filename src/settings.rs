@@ -20,32 +20,44 @@ pub fn request_dynamic_configuration_from_kakoune(
 pub fn request_initialization_options_from_kakoune(
     meta: &EditorMeta,
     ctx: &mut Context,
-) -> Option<Value> {
+) -> Vec<Option<Value>> {
     request_dynamic_configuration_from_kakoune(meta, ctx);
-    let settings = ctx
-        .dynamic_config
-        .language
-        .get(&ctx.language_id)
-        .and_then(|lang| lang.settings.as_ref());
-    let settings = configured_section(ctx, settings);
-    if settings.is_some() {
-        return settings;
-    }
+    let mut sections = Vec::with_capacity(ctx.language_servers.len());
+    for (language_id, srv_settings) in &ctx.language_servers {
+        let config = &ctx.config;
+        let settings = ctx
+            .dynamic_config
+            .language
+            .get(language_id)
+            .and_then(|lang| lang.settings.as_ref());
+        let settings = configured_section(language_id, config, settings);
+        if settings.is_some() {
+            sections.push(settings);
+            continue;
+        }
 
-    let legacy_settings = request_legacy_initialization_options_from_kakoune(meta, ctx);
-    if legacy_settings.is_some() {
-        return legacy_settings;
-    }
+        let legacy_settings = request_legacy_initialization_options_from_kakoune(meta, ctx);
+        if legacy_settings.is_some() {
+            sections.push(legacy_settings);
+            continue;
+        }
 
-    let lang = ctx.config.language.get(&ctx.language_id).unwrap();
-    configured_section(ctx, lang.settings.as_ref())
+        let lang = config.language.get(language_id).unwrap();
+        let settings = configured_section(language_id, config, lang.settings.as_ref());
+        sections.push(settings);
+    }
+    sections
 }
 
-pub fn configured_section(ctx: &Context, settings: Option<&Value>) -> Option<Value> {
+pub fn configured_section(
+    language_id: &LanguageId,
+    config: &Config,
+    settings: Option<&Value>,
+) -> Option<Value> {
     settings.and_then(|settings| {
-        ctx.config
+        config
             .language
-            .get(&ctx.language_id)
+            .get(language_id)
             .and_then(|cfg| cfg.settings_section.as_ref())
             .and_then(|section| settings.get(section).cloned())
     })
