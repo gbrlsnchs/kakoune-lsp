@@ -48,6 +48,7 @@ pub struct ServerSettings {
     pub preferred_offset_encoding: Option<OffsetEncoding>,
     pub capabilities: Option<ServerCapabilities>,
     pub diagnostics: HashMap<String, Vec<Diagnostic>>,
+    pub documents: HashMap<String, Document>,
     pub code_lenses: HashMap<String, Vec<CodeLens>>,
     pub tx: Sender<ServerMessage>,
 }
@@ -78,7 +79,6 @@ pub struct Context {
     pub request_counter: u64,
     pub response_waitlist: HashMap<Id, (EditorMeta, &'static str, BatchNumber, bool)>,
     pub session: SessionId,
-    pub documents: HashMap<String, Document>,
     pub work_done_progress: HashMap<NumberOrString, Option<WorkDoneProgressBegin>>,
     pub work_done_progress_report_timestamp: time::Instant,
     pub pending_file_watchers:
@@ -111,7 +111,6 @@ impl Context {
             request_counter: 0,
             response_waitlist: HashMap::default(),
             session,
-            documents: HashMap::default(),
             work_done_progress: HashMap::default(),
             work_done_progress_report_timestamp: time::Instant::now(),
             pending_file_watchers: HashMap::default(),
