@@ -247,7 +247,12 @@ impl Context {
         });
     }
 
-    pub fn reply(&mut self, id: Id, result: Result<Value, Error>) {
+    pub fn reply(
+        &mut self,
+        (language_id, srv_settings): (&LanguageId, &ServerSettings),
+        id: Id,
+        result: Result<Value, Error>,
+    ) {
         let output = match result {
             Ok(result) => Output::Success(Success {
                 jsonrpc: Some(Version::V2),
@@ -260,12 +265,12 @@ impl Context {
                 error,
             }),
         };
-        if self
-            .lang_srv_tx
+        if srv_settings
+            .tx
             .send(ServerMessage::Response(output))
             .is_err()
         {
-            error!("Failed to reply to language server");
+            error!("Failed to reply to language server {language_id}");
         };
     }
 
