@@ -104,8 +104,7 @@ pub fn text_document_did_save(meta: EditorMeta, ctx: &mut Context) {
 }
 
 pub fn spawn_file_watcher(
-    root_path: String,
-    watch_requests: HashMap<Option<PathBuf>, Vec<CompiledFileSystemWatcher>>,
+    watch_requests: HashMap<(LanguageId, Option<PathBuf>), Vec<CompiledFileSystemWatcher>>,
 ) -> Worker<(), Vec<FileEvent>> {
     info!("starting file watcher");
     Worker::spawn(
@@ -113,7 +112,7 @@ pub fn spawn_file_watcher(
         1024, // arbitrary
         move |receiver: Receiver<()>, sender: Sender<Vec<FileEvent>>| {
             let mut watchers = Vec::new();
-            for (path, path_watch_requests) in watch_requests {
+            for ((root_path, path), path_watch_requests) in watch_requests {
                 let sender = sender.clone();
                 let callback = move |res: notify::Result<notify::Event>| {
                     match res {
@@ -245,10 +244,11 @@ pub fn register_workspace_did_change_watched_files(options: Option<Value>, ctx: 
                 continue;
             }
         };
+        let (language_id, _) = srv;
         let default_watch_kind = WatchKind::Create | WatchKind::Change | WatchKind::Delete;
         let kind = watcher.kind.unwrap_or(default_watch_kind);
         ctx.pending_file_watchers
-            .entry(root_path)
+            .entry((language_id.clone(), root_path))
             .or_default()
             .push(CompiledFileSystemWatcher { kind, pattern });
     }

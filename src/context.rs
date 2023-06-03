@@ -81,7 +81,8 @@ pub struct Context {
     pub documents: HashMap<String, Document>,
     pub work_done_progress: HashMap<NumberOrString, Option<WorkDoneProgressBegin>>,
     pub work_done_progress_report_timestamp: time::Instant,
-    pub pending_file_watchers: HashMap<Option<PathBuf>, Vec<CompiledFileSystemWatcher>>,
+    pub pending_file_watchers:
+        HashMap<(LanguageId, Option<PathBuf>), Vec<CompiledFileSystemWatcher>>,
 }
 
 pub struct ContextBuilder {

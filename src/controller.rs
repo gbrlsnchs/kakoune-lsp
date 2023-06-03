@@ -342,7 +342,7 @@ pub fn start(
             }
             file_watcher = Some(FileWatcher {
                 pending_file_events: HashSet::new(),
-                worker: spawn_file_watcher(route.root.clone(), requested_watchers),
+                worker: spawn_file_watcher(requested_watchers),
             });
         }
     }
