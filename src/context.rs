@@ -250,10 +250,11 @@ impl Context {
 
     pub fn reply(
         &mut self,
-        (language_id, srv_settings): (&LanguageId, &ServerSettings),
+        srv: (&LanguageId, &ServerSettings),
         id: Id,
         result: Result<Value, Error>,
     ) {
+        let (language_id, srv_settings) = srv;
         let output = match result {
             Ok(result) => Output::Success(Success {
                 jsonrpc: Some(Version::V2),
@@ -275,10 +276,14 @@ impl Context {
         };
     }
 
-    pub fn notify<N: Notification>(&mut self, params: N::Params)
-    where
+    pub fn notify<N: Notification>(
+        &mut self,
+        srv: (&LanguageId, &ServerSettings),
+        params: N::Params,
+    ) where
         N::Params: IntoParams,
     {
+        let (language_id, srv_settings) = srv;
         let params = params.into_params();
         if params.is_err() {
             error!("Failed to convert params");
@@ -289,12 +294,12 @@ impl Context {
             method: N::METHOD.into(),
             params: params.unwrap(),
         };
-        if self
-            .lang_srv_tx
+        if srv_settings
+            .tx
             .send(ServerMessage::Request(Call::Notification(notification)))
             .is_err()
         {
-            error!("Failed to send notification to language server");
+            error!("Failed to send notification to language server {language_id}");
         }
     }
 
