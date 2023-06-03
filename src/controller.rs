@@ -18,7 +18,7 @@ use crate::types::*;
 use crate::util::*;
 use crate::workspace;
 use crossbeam_channel::Select;
-use crossbeam_channel::{never, select, tick, Receiver, Sender};
+use crossbeam_channel::{never, tick, Receiver, Sender};
 use jsonrpc_core::{Call, ErrorCode, MethodCall, Output, Params};
 use lsp_types::error_codes::CONTENT_MODIFIED;
 use lsp_types::notification::Notification;
