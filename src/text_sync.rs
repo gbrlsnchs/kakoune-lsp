@@ -202,7 +202,11 @@ pub struct CompiledFileSystemWatcher {
     pattern: glob::Pattern,
 }
 
-pub fn register_workspace_did_change_watched_files(options: Option<Value>, ctx: &mut Context) {
+pub fn register_workspace_did_change_watched_files(
+    srv: (&LanguageId, &ServerSettings),
+    options: Option<Value>,
+    ctx: &mut Context,
+) {
     let options = options.unwrap();
     let options = DidChangeWatchedFilesRegistrationOptions::deserialize(options).unwrap();
     assert!(ctx.pending_file_watchers.is_empty());

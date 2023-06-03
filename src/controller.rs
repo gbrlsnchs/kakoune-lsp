@@ -212,7 +212,8 @@ pub fn start(
             }
             i => {
                 let msg = op.recv(&srv_rxs[i]);
-                let (language_id, srv) = ctx.language_servers.iter().take(i).last().unwrap();
+                let srv = ctx.language_servers.iter().take(i).last().unwrap();
+                let (language_id, srv_settings) = srv;
 
                 if msg.is_err() {
                     break 'event_loop;
@@ -222,6 +223,7 @@ pub fn start(
                     ServerMessage::Request(call) => match call {
                         Call::MethodCall(request) => {
                             dispatch_server_request(
+                                srv,
                                 initial_request_meta.clone(),
                                 request,
                                 &mut ctx,
@@ -609,7 +611,13 @@ fn dispatch_editor_request(request: EditorRequest, ctx: &mut Context) {
     }
 }
 
-fn dispatch_server_request(meta: EditorMeta, request: MethodCall, ctx: &mut Context) {
+fn dispatch_server_request(
+    srv: (&LanguageId, &ServerSettings),
+    meta: EditorMeta,
+    request: MethodCall,
+    ctx: &mut Context,
+) {
+    let (language_id, srv_settings) = srv;
     let method: &str = &request.method;
     let result = match method {
         request::ApplyWorkspaceEdit::METHOD => {
@@ -624,6 +632,7 @@ fn dispatch_server_request(meta: EditorMeta, request: MethodCall, ctx: &mut Cont
                 match registration.method.as_str() {
                     notification::DidChangeWatchedFiles::METHOD => {
                         register_workspace_did_change_watched_files(
+                            srv,
                             registration.register_options,
                             ctx,
                         )
@@ -640,8 +649,8 @@ fn dispatch_server_request(meta: EditorMeta, request: MethodCall, ctx: &mut Cont
         }
         request::WorkspaceFoldersRequest::METHOD => {
             Ok(serde_json::to_value(vec![WorkspaceFolder {
-                uri: Url::from_file_path(&ctx.root_path).unwrap(),
-                name: ctx.root_path.to_string(),
+                uri: Url::from_file_path(&srv_settings.root_path).unwrap(),
+                name: srv_settings.root_path.to_string(),
             }])
             .ok()
             .unwrap())
@@ -661,7 +670,7 @@ fn dispatch_server_request(meta: EditorMeta, request: MethodCall, ctx: &mut Cont
         }
     };
 
-    ctx.reply(request.id, result);
+    ctx.reply(srv, request.id, result);
 }
 
 fn dispatch_server_notification(meta: EditorMeta, method: &str, params: Params, ctx: &mut Context) {
