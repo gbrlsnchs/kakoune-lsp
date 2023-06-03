@@ -94,7 +94,6 @@ pub fn start(
                         root_path: route.root.clone(),
                         offset_encoding: offset_encoding.unwrap_or_default(),
                         preferred_offset_encoding: offset_encoding,
-                        documents: Default::default(),
                         diagnostics: Default::default(),
                         code_lenses: Default::default(),
                         capabilities: None,
@@ -450,19 +449,29 @@ fn dispatch_editor_request(request: EditorRequest, ctx: &mut Context) {
     let params = request.params;
     match method {
         notification::DidOpenTextDocument::METHOD => {
-            text_document_did_open(meta, params, ctx);
+            for srv in &ctx.language_servers {
+                text_document_did_open(srv, meta, params, ctx);
+            }
         }
         notification::DidChangeTextDocument::METHOD => {
-            text_document_did_change(meta, params, ctx);
+            for srv in &ctx.language_servers {
+                text_document_did_change(srv, meta, params, ctx);
+            }
         }
         notification::DidCloseTextDocument::METHOD => {
-            text_document_did_close(meta, ctx);
+            for srv in &ctx.language_servers {
+                text_document_did_close(srv, meta, ctx);
+            }
         }
         notification::DidSaveTextDocument::METHOD => {
-            text_document_did_save(meta, ctx);
+            for srv in &ctx.language_servers {
+                text_document_did_save(srv, meta, ctx);
+            }
         }
         notification::DidChangeConfiguration::METHOD => {
-            workspace::did_change_configuration(meta, params, ctx);
+            for srv in &ctx.language_servers {
+                workspace::did_change_configuration(srv, meta, params, ctx);
+            }
         }
         request::CallHierarchyPrepare::METHOD => {
             call_hierarchy::call_hierarchy_prepare(meta, params, ctx);
@@ -501,10 +510,15 @@ fn dispatch_editor_request(request: EditorRequest, ctx: &mut Context) {
             goto::text_document_references(meta, params, ctx);
         }
         notification::Exit::METHOD => {
-            ctx.notify::<notification::Exit>(());
+            for srv in &ctx.language_servers {
+                ctx.notify::<notification::Exit>(srv, ());
+            }
         }
+
         notification::WorkDoneProgressCancel::METHOD => {
-            progress::work_done_progress_cancel(meta, params, ctx);
+            for srv in &ctx.language_servers {
+                progress::work_done_progress_cancel(srv, meta, params, ctx);
+            }
         }
         request::SelectionRangeRequest::METHOD => {
             selection_range::text_document_selection_range(meta, params, ctx);

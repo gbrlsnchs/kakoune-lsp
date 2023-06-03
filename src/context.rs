@@ -48,7 +48,6 @@ pub struct ServerSettings {
     pub preferred_offset_encoding: Option<OffsetEncoding>,
     pub capabilities: Option<ServerCapabilities>,
     pub diagnostics: HashMap<String, Vec<Diagnostic>>,
-    pub documents: HashMap<String, Document>,
     pub code_lenses: HashMap<String, Vec<CodeLens>>,
     pub tx: Sender<ServerMessage>,
 }
@@ -70,6 +69,7 @@ pub struct Context {
     // completions are valid.
     pub completion_last_client: Option<String>,
     pub config: Config,
+    pub documents: HashMap<String, Document>,
     pub dynamic_config: DynamicConfig,
     pub editor_tx: Sender<EditorResponse>,
     pub language_servers: BTreeMap<LanguageId, ServerSettings>,
@@ -102,6 +102,7 @@ impl Context {
             completion_items_timestamp: i32::max_value(),
             completion_last_client: None,
             config: params.config,
+            documents: Default::default(),
             dynamic_config: DynamicConfig::default(),
             editor_tx: params.editor_tx,
             language_servers: params.language_servers,

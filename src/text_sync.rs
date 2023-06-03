@@ -16,10 +16,16 @@ use ropey::Rope;
 use serde::Deserialize;
 use url::Url;
 
-pub fn text_document_did_open(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
+pub fn text_document_did_open(
+    srv: (&LanguageId, &ServerSettings),
+    meta: EditorMeta,
+    params: EditorParams,
+    ctx: &mut Context,
+) {
     let params = TextDocumentDidOpenParams::deserialize(params)
         .expect("Params should follow TextDocumentDidOpenParams structure");
-    let language_id = ctx.language_id.clone();
+    let (language_id, srv_settings) = srv;
+    let language_id = language_id.clone();
     let params = DidOpenTextDocumentParams {
         text_document: TextDocumentItem {
             uri: Url::from_file_path(&meta.buffile).unwrap(),
@@ -33,15 +39,21 @@ pub fn text_document_did_open(meta: EditorMeta, params: EditorParams, ctx: &mut 
         text: Rope::from_str(&params.text_document.text),
     };
     ctx.documents.insert(meta.buffile.clone(), document);
-    ctx.notify::<DidOpenTextDocument>(params);
+    ctx.notify::<DidOpenTextDocument>(srv, params);
     text_document_code_lens(meta, ctx);
 }
 
-pub fn text_document_did_change(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
+pub fn text_document_did_change(
+    srv: (&LanguageId, &ServerSettings),
+    meta: EditorMeta,
+    params: EditorParams,
+    ctx: &mut Context,
+) {
     let params = TextDocumentDidChangeParams::deserialize(params)
         .expect("Params should follow TextDocumentDidChangeParams structure");
     let uri = Url::from_file_path(&meta.buffile).unwrap();
     let version = meta.version;
+    let (language_id, srv_settings) = srv;
     let old_version = ctx
         .documents
         .get(&meta.buffile)
@@ -55,7 +67,9 @@ pub fn text_document_did_change(meta: EditorMeta, params: EditorParams, ctx: &mu
         text: Rope::from_str(&params.draft),
     };
     ctx.documents.insert(meta.buffile.clone(), document);
-    ctx.diagnostics.insert(meta.buffile.clone(), Vec::new());
+    srv_settings
+        .diagnostics
+        .insert(meta.buffile.clone(), Vec::new());
     let req_params = DidChangeTextDocumentParams {
         text_document: VersionedTextDocumentIdentifier {
             uri,
@@ -67,21 +81,35 @@ pub fn text_document_did_change(meta: EditorMeta, params: EditorParams, ctx: &mu
             text: params.draft,
         }],
     };
-    ctx.notify::<DidChangeTextDocument>(req_params);
+    ctx.notify::<DidChangeTextDocument>(srv, req_params);
     text_document_code_lens(meta, ctx);
 }
 
-pub fn text_document_did_close(meta: EditorMeta, ctx: &mut Context) {
+pub fn text_document_did_close(
+    srv: (&LanguageId, &ServerSettings),
+    meta: EditorMeta,
+    ctx: &mut Context,
+) {
     ctx.documents.remove(&meta.buffile);
     let uri = Url::from_file_path(&meta.buffile).unwrap();
     let params = DidCloseTextDocumentParams {
         text_document: TextDocumentIdentifier { uri },
     };
-    ctx.notify::<DidCloseTextDocument>(params);
+    ctx.notify::<DidCloseTextDocument>(srv, params);
 }
 
-pub fn text_document_did_save(meta: EditorMeta, ctx: &mut Context) {
-    let text = match ctx.capabilities.as_ref().unwrap().text_document_sync {
+pub fn text_document_did_save(
+    srv: (&LanguageId, &ServerSettings),
+    meta: EditorMeta,
+    ctx: &mut Context,
+) {
+    let (_, srv_settings) = srv;
+    let text = match srv_settings
+        .capabilities
+        .as_ref()
+        .unwrap()
+        .text_document_sync
+    {
         Some(TextDocumentSyncCapability::Options(TextDocumentSyncOptions {
             save:
                 Some(TextDocumentSyncSaveOptions::SaveOptions(SaveOptions {
@@ -100,7 +128,7 @@ pub fn text_document_did_save(meta: EditorMeta, ctx: &mut Context) {
         text_document: TextDocumentIdentifier { uri },
         text,
     };
-    ctx.notify::<DidSaveTextDocument>(params);
+    ctx.notify::<DidSaveTextDocument>(srv, params);
 }
 
 pub fn spawn_file_watcher(
