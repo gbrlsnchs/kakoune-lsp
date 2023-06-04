@@ -277,6 +277,8 @@ pub fn start(
                                 }
                             }
                             Output::Failure(failure) => {
+                                // TODO: Handle partial errors?
+
                                 if let Some(request) = ctx.response_waitlist.remove(&failure.id) {
                                     let (meta, method, _, canceled) = request;
                                     if canceled {
@@ -289,7 +291,10 @@ pub fn start(
                                         meta.client.clone(),
                                         &failure.id,
                                     );
-                                    error!("Error response from server: {:?}", failure);
+                                    error!(
+                                        "Error response from server {}: {:?}",
+                                        language_id, failure
+                                    );
                                     if meta.write_response_to_fifo {
                                         write_response_to_fifo(meta, failure);
                                         continue;
@@ -322,7 +327,10 @@ pub fn start(
                                         }
                                     }
                                 } else {
-                                    error!("Error response from server: {:?}", failure);
+                                    error!(
+                                        "Error response from server {}: {:?}",
+                                        language_id, failure
+                                    );
                                     error!("Id {:?} is not in waitlist!", failure.id);
                                 }
                             }
