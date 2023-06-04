@@ -219,9 +219,13 @@ fn event_file_changes(
     file_changes
 }
 
-pub fn workspace_did_change_watched_files(changes: Vec<FileEvent>, ctx: &mut Context) {
+pub fn workspace_did_change_watched_files(
+    srv: (&LanguageId, &ServerSettings),
+    changes: Vec<FileEvent>,
+    ctx: &mut Context,
+) {
     let params = DidChangeWatchedFilesParams { changes };
-    ctx.notify::<DidChangeWatchedFiles>(params);
+    ctx.notify::<DidChangeWatchedFiles>(srv, params);
 }
 
 #[derive(Clone)]

@@ -205,7 +205,7 @@ pub fn start(
                 if !fw.pending_file_events.is_empty() {
                     let file_events = fw.pending_file_events.drain().collect();
                     for srv in &ctx.language_servers {
-                        workspace_did_change_watched_files(file_events, &mut ctx);
+                        workspace_did_change_watched_files(srv, file_events, &mut ctx);
                     }
                     fw.pending_file_events.clear();
                 }
