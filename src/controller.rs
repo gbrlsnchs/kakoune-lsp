@@ -443,7 +443,9 @@ fn dispatch_incoming_editor_request(request: EditorRequest, ctx: &mut Context) {
 }
 
 fn dispatch_editor_request(request: EditorRequest, ctx: &mut Context) {
-    ensure_did_open(&request, ctx);
+    for srv in &ctx.language_servers {
+        ensure_did_open(srv, &request, ctx);
+    }
     let method: &str = &request.method;
     let meta = request.meta;
     let params = request.params;
@@ -741,20 +743,24 @@ fn dispatch_server_notification(meta: EditorMeta, method: &str, params: Params, 
 ///
 /// In a normal situation, such extra request is not required, and `ensure_did_open` short-circuits
 /// most of the time in `if buffile.is_empty() || ctx.documents.contains_key(buffile)` condition.
-fn ensure_did_open(request: &EditorRequest, ctx: &mut Context) {
+fn ensure_did_open(
+    srv: (&LanguageId, &ServerSettings),
+    request: &EditorRequest,
+    ctx: &mut Context,
+) {
     let buffile = &request.meta.buffile;
     if buffile.is_empty() || ctx.documents.contains_key(buffile) {
         return;
     };
     if request.method == notification::DidChangeTextDocument::METHOD {
-        text_document_did_open(request.meta.clone(), request.params.clone(), ctx);
+        text_document_did_open(srv, request.meta.clone(), request.params.clone(), ctx);
         return;
     }
     match read_document(buffile) {
         Ok(draft) => {
             let mut params = toml::value::Table::default();
             params.insert("draft".to_string(), toml::Value::String(draft));
-            text_document_did_open(request.meta.clone(), toml::Value::Table(params), ctx);
+            text_document_did_open(srv, request.meta.clone(), toml::Value::Table(params), ctx);
         }
         Err(err) => error!(
             "Failed to read file {} to simulate textDocument/didOpen: {}",
