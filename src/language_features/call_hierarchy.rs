@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::context::*;
 use crate::position::*;
 use crate::types::*;
@@ -21,9 +23,9 @@ pub fn call_hierarchy_prepare(meta: EditorMeta, params: EditorParams, ctx: &mut 
 
     ctx.call::<CallHierarchyPrepare, _>(
         meta,
-        prepare_params,
-        move |ctx: &mut Context, meta, result| {
-            request_call_hierarchy(meta, ctx, params.incoming_or_outgoing, result);
+        RequestParams::All(vec![prepare_params]),
+        move |ctx: &mut Context, meta, results| {
+            request_call_hierarchy(meta, ctx, params.incoming_or_outgoing, results);
         },
     )
 }
@@ -32,40 +34,65 @@ fn request_call_hierarchy(
     meta: EditorMeta,
     ctx: &mut Context,
     incoming_or_outgoing: bool,
-    result: Option<Vec<CallHierarchyItem>>,
+    results: Vec<(LanguageId, Option<Vec<CallHierarchyItem>>)>,
 ) {
+    let result = results
+        .into_iter()
+        .find(|(_, response)| response.is_some())
+        .and_then(|(language_id, item)| Some((language_id, item.unwrap())));
+
     // TODO Can we get multiple items here?
-    let item = match result.and_then(|r| r.into_iter().next()) {
+    let (language_id, item) = match result
+        .and_then(|(language_id, r)| r.into_iter().next().and_then(|v| Some((language_id, v))))
+    {
         Some(item) => item,
         None => return,
     };
 
     if incoming_or_outgoing {
-        let params = CallHierarchyIncomingCallsParams {
-            item: item.clone(),
-            work_done_progress_params: WorkDoneProgressParams::default(),
-            partial_result_params: PartialResultParams::default(),
+        let params = {
+            let mut m = HashMap::with_capacity(1);
+            m.insert(
+                language_id,
+                vec![CallHierarchyIncomingCallsParams {
+                    item: item.clone(),
+                    work_done_progress_params: WorkDoneProgressParams::default(),
+                    partial_result_params: PartialResultParams::default(),
+                }],
+            );
+            m
         };
 
         ctx.call::<CallHierarchyIncomingCalls, _>(
             meta,
-            params,
-            move |ctx: &mut Context, meta, result| {
-                format_call_hierarchy_calls(meta, ctx, incoming_or_outgoing, &item, &result);
+            RequestParams::Each(params),
+            move |ctx: &mut Context, meta, results| {
+                if let Some(result) = results.first() {
+                    format_call_hierarchy_calls(meta, ctx, incoming_or_outgoing, &item, result);
+                }
             },
         );
     } else {
-        let params = CallHierarchyOutgoingCallsParams {
-            item: item.clone(),
-            work_done_progress_params: WorkDoneProgressParams::default(),
-            partial_result_params: PartialResultParams::default(),
+        let params = {
+            let mut m = HashMap::with_capacity(1);
+            m.insert(
+                language_id,
+                vec![CallHierarchyOutgoingCallsParams {
+                    item: item.clone(),
+                    work_done_progress_params: WorkDoneProgressParams::default(),
+                    partial_result_params: PartialResultParams::default(),
+                }],
+            );
+            m
         };
 
         ctx.call::<CallHierarchyOutgoingCalls, _>(
             meta,
-            params,
-            move |ctx: &mut Context, meta, result| {
-                format_call_hierarchy_calls(meta, ctx, incoming_or_outgoing, &item, &result);
+            RequestParams::Each(params),
+            move |ctx: &mut Context, meta, results| {
+                if let Some(result) = results.first() {
+                    format_call_hierarchy_calls(meta, ctx, incoming_or_outgoing, &item, result);
+                }
             },
         );
     }
@@ -74,13 +101,14 @@ fn request_call_hierarchy(
 fn format_location(
     meta: &EditorMeta,
     ctx: &mut Context,
+    root_path: &str,
     uri: &Url,
     position: Position,
     prefix: &str,
     suffix: &str,
 ) -> String {
     let filename = uri.to_file_path().unwrap();
-    let filename = short_file_path(filename.to_str().unwrap(), &ctx.root_path);
+    let filename = short_file_path(filename.to_str().unwrap(), root_path);
     let position = get_kakoune_position_with_fallback(&meta.buffile, position, ctx);
     format!(
         "{}{}:{}:{}: {}\n",
@@ -123,8 +151,10 @@ fn format_call_hierarchy_calls<'a>(
     ctx: &mut Context,
     incoming_or_outgoing: bool,
     item: &'a CallHierarchyItem,
-    result: &'a Option<Vec<impl CallHierarchyCall<'a>>>,
+    result: &'a (LanguageId, Option<Vec<impl CallHierarchyCall<'a>>>),
 ) {
+    let (language_id, result) = result;
+    let ServerSettings { root_path, .. } = &ctx.language_servers[language_id];
     let result = match result {
         Some(result) => result,
         None => return,
@@ -143,6 +173,7 @@ fn format_call_hierarchy_calls<'a>(
     let contents = format_location(
         &meta,
         ctx,
+        root_path,
         &item.uri,
         item.range.start,
         "",
@@ -157,6 +188,7 @@ fn format_call_hierarchy_calls<'a>(
             format_location(
                 &meta,
                 ctx,
+                root_path,
                 &caller_or_calle.uri,
                 caller_or_calle.range.start,
                 "  ",
@@ -172,7 +204,15 @@ fn format_call_hierarchy_calls<'a>(
                         .strip_suffix("\r\n")
                         .or_else(|| line.strip_suffix('\n'))
                         .unwrap_or(&line);
-                    format_location(&meta, ctx, &caller.uri, range.start, "    ", line)
+                    format_location(
+                        &meta,
+                        ctx,
+                        root_path,
+                        &caller.uri,
+                        range.start,
+                        "    ",
+                        line,
+                    )
                 })
                 .join("")
         })
@@ -186,7 +226,7 @@ fn format_call_hierarchy_calls<'a>(
     let command = format!(
         "{} {} {}",
         command,
-        editor_quote(&ctx.root_path),
+        editor_quote(&root_path),
         editor_quote(&contents),
     );
     ctx.exec(meta, command);
