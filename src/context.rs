@@ -8,7 +8,7 @@ use lsp_types::*;
 use serde::Deserialize;
 use std::borrow::Cow;
 use std::collections::hash_map::Entry;
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::convert::TryInto;
 use std::path::PathBuf;
 use std::{fs, time};
@@ -181,14 +181,19 @@ impl Context {
                 ops.len(),
                 Vec::with_capacity(ops.len()),
                 Box::new(move |ctx, meta, vals| {
+                    let servers = HashSet::with_capacity(ctx.language_servers.len());
+
+                    // Only get the last response of each server.
                     let results = vals
                         .into_iter()
-                        .map(|(key, val)| {
+                        .rev()
+                        .map(|(language_id, val)| {
                             (
-                                key,
+                                language_id,
                                 serde_json::from_value(val).expect("Failed to parse response"),
                             )
                         })
+                        .filter(|(language_id, _)| servers.insert(language_id))
                         .collect();
                     callback(ctx, meta, results)
                 }),
