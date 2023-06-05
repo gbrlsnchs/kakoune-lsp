@@ -28,22 +28,31 @@ pub fn text_document_completion(meta: EditorMeta, params: EditorParams, ctx: &mu
         work_done_progress_params: Default::default(),
         partial_result_params: Default::default(),
     };
-    ctx.call::<Completion, _>(meta, req_params, |ctx: &mut Context, meta, result| {
-        editor_completion(meta, params, result, ctx)
-    });
+    ctx.call::<Completion, _>(
+        meta,
+        RequestParams::All(vec![req_params]),
+        |ctx: &mut Context, meta, results| editor_completion(meta, params, results, ctx),
+    );
 }
 
 fn editor_completion(
     meta: EditorMeta,
     params: TextDocumentCompletionParams,
-    result: Option<CompletionResponse>,
+    results: Vec<(String, Option<CompletionResponse>)>,
     ctx: &mut Context,
 ) {
-    let items = match result {
-        Some(CompletionResponse::Array(items)) => items,
-        Some(CompletionResponse::List(list)) => list.items,
-        None => vec![],
-    };
+    let items = results
+        .into_iter()
+        .flat_map(|(language_id, items)| {
+            let items = match items {
+                Some(CompletionResponse::Array(items)) => items,
+                Some(CompletionResponse::List(list)) => list.items,
+                None => vec![],
+            };
+
+            items.into_iter().map(|v| (language_id, v))
+        })
+        .collect();
 
     let version = meta.version;
     ctx.completion_items = items;
@@ -60,7 +69,7 @@ fn editor_completion(
     // Maximum display width of any completion label.
     let maxwidth = items
         .iter()
-        .map(|x| UnicodeWidthStr::width(x.label.as_str()))
+        .map(|(_, x)| UnicodeWidthStr::width(x.label.as_str()))
         .max()
         .unwrap_or(0);
 
@@ -70,8 +79,9 @@ fn editor_completion(
     let items = items
         .iter()
         .enumerate()
-        .map(|(completion_item_index, x)| {
-            let maybe_resolve = if ctx
+        .map(|(completion_item_index, (language_id, x))| {
+            let srv_settings = ctx.language_servers[language_id];
+            let maybe_resolve = if srv_settings
                 .capabilities
                 .as_ref()
                 .and_then(|caps| caps.completion_provider.as_ref())
@@ -116,7 +126,7 @@ fn editor_completion(
                         let range = lsp_range_to_kakoune(
                             &text_edit.range,
                             &document.text,
-                            ctx.offset_encoding,
+                            srv_settings.offset_encoding,
                         );
 
                         if can_infer_offset {

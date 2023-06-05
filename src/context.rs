@@ -62,7 +62,7 @@ pub struct Context {
             ResponsesCallback,
         ),
     >,
-    pub completion_items: Vec<CompletionItem>,
+    pub completion_items: Vec<(LanguageId, CompletionItem)>,
     pub completion_items_timestamp: i32,
     // We currently only track one client's completion items, to simplify cleanup (else we
     // might need to hook into ClientClose). Track the client name, so we can check if the
