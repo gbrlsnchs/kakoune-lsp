@@ -261,15 +261,19 @@ pub fn start(
                                         write_response_to_fifo(meta, &success);
                                         continue;
                                     }
-                                    if let Some((batch_amt, mut vals, callback)) =
+                                    if let Some((mut vals, callback)) =
                                         ctx.batches.remove(&batch_id)
                                     {
-                                        vals.push((language_id.clone(), success.result));
-                                        if batch_amt == 1 {
-                                            callback(&mut ctx, meta, vals);
-                                        } else {
-                                            ctx.batches
-                                                .insert(batch_id, (batch_amt - 1, vals, callback));
+                                        if let Some(batch_seq) = ctx.batch_sizes.remove(&batch_id) {
+                                            vals.push((language_id.clone(), success.result));
+                                            let batch_size = batch_seq.values().sum();
+
+                                            if vals.len() >= batch_size {
+                                                callback(&mut ctx, meta, vals);
+                                            } else {
+                                                ctx.batch_sizes.insert(batch_id, batch_seq);
+                                                ctx.batches.insert(batch_id, (vals, callback));
+                                            }
                                         }
                                     }
                                 } else {
@@ -277,10 +281,8 @@ pub fn start(
                                 }
                             }
                             Output::Failure(failure) => {
-                                // TODO: Handle partial errors?
-
                                 if let Some(request) = ctx.response_waitlist.remove(&failure.id) {
-                                    let (meta, method, _, canceled) = request;
+                                    let (meta, method, batch_id, canceled) = request;
                                     if canceled {
                                         continue;
                                     }
@@ -298,6 +300,41 @@ pub fn start(
                                     if meta.write_response_to_fifo {
                                         write_response_to_fifo(meta, failure);
                                         continue;
+                                    }
+                                    'partial_err_handling: {
+                                        if let Some((vals, callback)) =
+                                            ctx.batches.remove(&batch_id)
+                                        {
+                                            if let Some(batch_seq) =
+                                                ctx.batch_sizes.remove(&batch_id)
+                                            {
+                                                batch_seq.remove(language_id);
+
+                                                // Is this the only server being used? If so, let's break before
+                                                // we handle the callback.
+                                                if batch_seq.is_empty() {
+                                                    break 'partial_err_handling;
+                                                }
+
+                                                // Remove this failing language server from the batch, allowing
+                                                // working ones to still be handled.
+                                                vals = vals
+                                                    .into_iter()
+                                                    .filter(|(id, _)| id != language_id)
+                                                    .collect();
+
+                                                // Scenario: this failing server is holding back the response handling
+                                                // for all other servers, which already responded successfully.
+                                                if vals.len() >= batch_seq.values().sum() {
+                                                    callback(&mut ctx, meta, vals);
+                                                } else {
+                                                    // Re-insert the batch, as we have no business with it at the moment,
+                                                    // since not all servers have completely responded.
+                                                    ctx.batch_sizes.insert(batch_id, batch_seq);
+                                                    ctx.batches.insert(batch_id, (vals, callback));
+                                                }
+                                            }
+                                        }
                                     }
                                     match failure.error.code {
                                         code if code

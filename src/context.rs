@@ -54,10 +54,10 @@ pub struct ServerSettings {
 
 pub struct Context {
     batch_counter: BatchNumber,
+    pub batch_sizes: HashMap<BatchNumber, HashMap<LanguageId, usize>>,
     pub batches: HashMap<
         BatchNumber,
         (
-            BatchCount,
             Vec<(LanguageId, serde_json::value::Value)>,
             ResponsesCallback,
         ),
@@ -97,7 +97,8 @@ impl Context {
         let session = params.initial_request.meta.session.clone();
         Context {
             batch_counter: 0,
-            batches: HashMap::default(),
+            batch_sizes: Default::default(),
+            batches: Default::default(),
             completion_items: vec![],
             completion_items_timestamp: i32::max_value(),
             completion_last_client: None,
@@ -175,10 +176,18 @@ impl Context {
         R::Result: for<'a> Deserialize<'a>,
     {
         let batch_id = self.next_batch_id();
+
+        self.batch_sizes.insert(
+            batch_id,
+            ops.iter().fold(HashMap::new(), |mut m, (language_id, _)| {
+                let count = m.entry(language_id.clone()).or_default();
+                *count += 1;
+                m
+            }),
+        );
         self.batches.insert(
             batch_id,
             (
-                ops.len(),
                 Vec::with_capacity(ops.len()),
                 Box::new(move |ctx, meta, vals| {
                     let servers = HashSet::with_capacity(ctx.language_servers.len());
