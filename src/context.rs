@@ -203,6 +203,7 @@ impl Context {
                             )
                         })
                         .filter(|(language_id, _)| servers.insert(language_id))
+                        .rev() // preserve response order
                         .collect();
                     callback(ctx, meta, results)
                 }),
