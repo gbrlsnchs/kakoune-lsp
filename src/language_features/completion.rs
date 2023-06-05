@@ -11,6 +11,7 @@ use lsp_types::request::*;
 use lsp_types::*;
 use regex::Regex;
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::convert::TryInto;
 use unicode_width::UnicodeWidthStr;
 use url::Url;
@@ -309,20 +310,21 @@ pub fn completion_item_resolve(meta: EditorMeta, params: EditorParams, ctx: &mut
         return;
     }
 
-    let (item, detail, documentation) = if pager_active {
-        let item = &ctx.completion_items[completion_item_index as usize];
+    let (language_id, item, detail, documentation) = if pager_active {
+        let (language_id, item) = &ctx.completion_items[completion_item_index as usize];
         // Stop if there is nothing interesting to resolve.
         if item.detail.is_some() && item.documentation.is_some() {
             return;
         }
         (
+            language_id.clone(),
             item.clone(),
             item.detail.clone(),
             item.documentation.clone(),
         )
     } else {
         // Since we're the only user of the completion items, we can clear them.
-        let item = ctx
+        let (language_id, item) = ctx
             .completion_items
             .drain(..)
             .nth(completion_item_index as usize)
@@ -338,12 +340,28 @@ pub fn completion_item_resolve(meta: EditorMeta, params: EditorParams, ctx: &mut
             _ => (),
         }
 
-        (item, None, None)
+        (language_id, item, None, None)
     };
 
-    ctx.call::<ResolveCompletionItem, _>(meta, item, move |tx: &mut Context, meta, new_item| {
-        editor_completion_item_resolve(tx, meta, pager_active, detail, documentation, new_item)
-    });
+    let mut req_params = HashMap::new();
+    req_params.insert(language_id, vec![item]);
+
+    ctx.call::<ResolveCompletionItem, _>(
+        meta,
+        RequestParams::Each(req_params),
+        move |tx: &mut Context, meta, results| {
+            if let Some((_, new_item)) = results.first() {
+                editor_completion_item_resolve(
+                    tx,
+                    meta,
+                    pager_active,
+                    detail,
+                    documentation,
+                    new_item,
+                )
+            }
+        },
+    );
 }
 
 fn editor_completion_item_resolve(
@@ -352,7 +370,7 @@ fn editor_completion_item_resolve(
     pager_active: bool,
     old_detail: Option<String>,
     old_documentation: Option<Documentation>,
-    new_item: CompletionItem,
+    new_item: &CompletionItem,
 ) {
     if pager_active {
         if new_item.detail == old_detail || new_item.documentation == old_documentation {
@@ -362,7 +380,7 @@ fn editor_completion_item_resolve(
             meta,
             format!(
                 "info -markup -style menu -- %§{}§",
-                completion_menu_text(&new_item).replace('§', "§§")
+                completion_menu_text(new_item).replace('§', "§§")
             ),
         );
     } else if let Some(resolved_edits) = new_item.additional_text_edits {
