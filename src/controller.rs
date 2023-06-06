@@ -299,21 +299,13 @@ pub fn start(
                                         write_response_to_fifo(meta, failure);
                                         continue;
                                     }
-                                    'partial_err_handling: {
-                                        if let Some((vals, callback)) =
-                                            ctx.batches.remove(&batch_id)
-                                        {
-                                            if let Some(batch_seq) =
-                                                ctx.batch_sizes.remove(&batch_id)
-                                            {
-                                                batch_seq.remove(language_id);
+                                    if let Some((vals, callback)) = ctx.batches.remove(&batch_id) {
+                                        if let Some(batch_seq) = ctx.batch_sizes.remove(&batch_id) {
+                                            batch_seq.remove(language_id);
 
-                                                // Is this the only server being used? If so, let's break before
-                                                // we handle the callback.
-                                                if batch_seq.is_empty() {
-                                                    break 'partial_err_handling;
-                                                }
-
+                                            // We con only keep going if there are still other servers to respond.
+                                            // Otherwise, skip the following block and handle failure.
+                                            if !batch_seq.is_empty() {
                                                 // Remove this failing language server from the batch, allowing
                                                 // working ones to still be handled.
                                                 vals = vals
@@ -331,6 +323,8 @@ pub fn start(
                                                     ctx.batch_sizes.insert(batch_id, batch_seq);
                                                     ctx.batches.insert(batch_id, (vals, callback));
                                                 }
+
+                                                continue;
                                             }
                                         }
                                     }
@@ -344,6 +338,7 @@ pub fn start(
                                             ctx.exec(meta, "nop".to_string());
                                         }
                                         code => {
+                                            // TODO: Detail messages for different failing servers.
                                             let msg = match code {
                                                 ErrorCode::MethodNotFound => format!(
                                                     "{} language server doesn't support method {}",
