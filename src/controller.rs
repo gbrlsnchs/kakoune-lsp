@@ -94,8 +94,6 @@ pub fn start(
                         root_path: route.root.clone(),
                         offset_encoding: offset_encoding.unwrap_or_default(),
                         preferred_offset_encoding: offset_encoding,
-                        diagnostics: Default::default(),
-                        code_lenses: Default::default(),
                         capabilities: None,
                         tx,
                     },

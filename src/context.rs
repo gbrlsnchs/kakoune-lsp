@@ -47,8 +47,6 @@ pub struct ServerSettings {
     pub offset_encoding: OffsetEncoding,
     pub preferred_offset_encoding: Option<OffsetEncoding>,
     pub capabilities: Option<ServerCapabilities>,
-    pub diagnostics: HashMap<String, Vec<Diagnostic>>,
-    pub code_lenses: HashMap<String, Vec<CodeLens>>,
     pub tx: Sender<ServerMessage>,
 }
 
@@ -62,6 +60,7 @@ pub struct Context {
             ResponsesCallback,
         ),
     >,
+    pub code_lenses: HashMap<String, Vec<(LanguageId, CodeLens)>>,
     pub completion_items: Vec<(LanguageId, CompletionItem)>,
     pub completion_items_timestamp: i32,
     // We currently only track one client's completion items, to simplify cleanup (else we
@@ -69,6 +68,7 @@ pub struct Context {
     // completions are valid.
     pub completion_last_client: Option<String>,
     pub config: Config,
+    pub diagnostics: HashMap<String, Vec<(LanguageId, Diagnostic)>>,
     pub documents: HashMap<String, Document>,
     pub dynamic_config: DynamicConfig,
     pub editor_tx: Sender<EditorResponse>,
@@ -99,10 +99,12 @@ impl Context {
             batch_counter: 0,
             batch_sizes: Default::default(),
             batches: Default::default(),
+            code_lenses: Default::default(),
             completion_items: vec![],
             completion_items_timestamp: i32::max_value(),
             completion_last_client: None,
             config: params.config,
+            diagnostics: Default::default(),
             documents: Default::default(),
             dynamic_config: DynamicConfig::default(),
             editor_tx: params.editor_tx,
