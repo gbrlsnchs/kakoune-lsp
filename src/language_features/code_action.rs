@@ -1,3 +1,6 @@
+use std::collections::HashMap;
+use std::collections::HashSet;
+
 use crate::capabilities::attempt_server_capability;
 use crate::capabilities::CAPABILITY_CODE_ACTIONS;
 use crate::capabilities::CAPABILITY_CODE_ACTIONS_RESOLVE;
@@ -15,7 +18,12 @@ use serde::Deserialize;
 use url::Url;
 
 pub fn text_document_code_action(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
-    if meta.fifo.is_none() && !attempt_server_capability(ctx, &meta, CAPABILITY_CODE_ACTIONS) {
+    let eligible_servers: Vec<_> = ctx
+        .language_servers
+        .iter()
+        .filter(|srv| attempt_server_capability(*srv, &meta, CAPABILITY_CODE_ACTIONS))
+        .collect();
+    if meta.fifo.is_none() && eligible_servers.is_empty() {
         return;
     }
 
@@ -33,85 +41,145 @@ pub fn text_document_code_action(meta: EditorMeta, params: EditorParams, ctx: &m
             return;
         }
     };
-    let range = kakoune_range_to_lsp(
-        &parse_kakoune_range(&params.selection_desc).0,
-        &document.text,
-        ctx.offset_encoding,
-    );
-    code_actions_for_range(meta, params, ctx, range)
+    let ranges = eligible_servers
+        .into_iter()
+        .map(|(language_id, srv_settings)| {
+            (
+                language_id.clone(),
+                kakoune_range_to_lsp(
+                    &parse_kakoune_range(&params.selection_desc).0,
+                    &document.text,
+                    srv_settings.offset_encoding,
+                ),
+            )
+        })
+        .collect();
+    code_actions_for_range(meta, params, ctx, ranges)
 }
 
 fn code_actions_for_range(
     meta: EditorMeta,
     params: CodeActionsParams,
     ctx: &mut Context,
-    range: Range,
+    ranges: HashMap<LanguageId, Range>,
 ) {
     let buff_diags = ctx.diagnostics.get(&meta.buffile);
 
-    let diagnostics: Vec<Diagnostic> = if let Some(buff_diags) = buff_diags {
+    let diagnostics: HashMap<LanguageId, Vec<Diagnostic>> = if let Some(buff_diags) = buff_diags {
         buff_diags
             .iter()
-            .filter(|d| ranges_overlap(d.range, range))
+            .filter(|(language_id, d)| ranges_overlap(d.range, ranges[language_id]))
             .cloned()
-            .collect()
+            .fold(HashMap::new(), |mut m, v| {
+                let (language_id, diagnostic) = v;
+                m.entry(language_id).or_default().push(diagnostic);
+                m
+            })
     } else {
-        Vec::new()
+        HashMap::new()
     };
 
-    let req_params = CodeActionParams {
-        text_document: TextDocumentIdentifier {
-            uri: Url::from_file_path(&meta.buffile).unwrap(),
+    let req_params = ranges
+        .into_iter()
+        .map(|(language_id, range)| {
+            (
+                language_id,
+                vec![CodeActionParams {
+                    text_document: TextDocumentIdentifier {
+                        uri: Url::from_file_path(&meta.buffile).unwrap(),
+                    },
+                    range,
+                    context: CodeActionContext {
+                        diagnostics: diagnostics.remove(&language_id).unwrap_or_default(),
+                        only: None,
+                        trigger_kind: Some(if meta.hook {
+                            CodeActionTriggerKind::AUTOMATIC
+                        } else {
+                            CodeActionTriggerKind::INVOKED
+                        }),
+                    },
+                    work_done_progress_params: Default::default(),
+                    partial_result_params: Default::default(),
+                }],
+            )
+        })
+        .collect();
+    ctx.call::<CodeActionRequest, _>(
+        meta,
+        RequestParams::Each(req_params),
+        move |ctx: &mut Context, meta, results| {
+            editor_code_actions(meta, results, ctx, params, ranges)
         },
-        range,
-        context: CodeActionContext {
-            diagnostics,
-            only: None,
-            trigger_kind: Some(if meta.hook {
-                CodeActionTriggerKind::AUTOMATIC
-            } else {
-                CodeActionTriggerKind::INVOKED
-            }),
-        },
-        work_done_progress_params: Default::default(),
-        partial_result_params: Default::default(),
-    };
-    ctx.call::<CodeActionRequest, _>(meta, req_params, move |ctx: &mut Context, meta, result| {
-        editor_code_actions(meta, result, ctx, params, range)
-    });
+    );
 }
 
 fn editor_code_actions(
     meta: EditorMeta,
-    result: Option<CodeActionResponse>,
+    results: Vec<(LanguageId, Option<CodeActionResponse>)>,
     ctx: &mut Context,
     params: CodeActionsParams,
-    mut range: Range,
+    mut ranges: HashMap<LanguageId, Range>,
 ) {
     if !meta.hook
-        && result == Some(vec![])
-        && range.start.character != 0
-        && range.end.character != EOL_OFFSET
+        && results
+            .iter()
+            .all(|(language_id, result)| match ranges.get(language_id) {
+                Some(range) => {
+                    result == &Some(vec![])
+                        && range.start.character != 0
+                        && range.end.character != EOL_OFFSET
+                }
+                // Range is not registered for the language server,
+                // so let's not let it influence in whether we should
+                // reset the range and re-run code actions.
+                None => true,
+            })
     {
         // Some servers send code actions only if the requested range includes the affected
         // AST nodes.  Let's make them more convenient to access by requesting on whole lines.
-        range.start.character = 0;
-        range.end.character = EOL_OFFSET;
-        code_actions_for_range(meta, params, ctx, range);
+        for (_, range) in &mut ranges {
+            range.start.character = 0;
+            range.end.character = EOL_OFFSET;
+        }
+        code_actions_for_range(meta, params, ctx, ranges);
         return;
     }
 
-    let actions = result.unwrap_or_default();
+    let actions: Vec<_> = results
+        .into_iter()
+        .flat_map(|(language_id, cmd)| {
+            let cmd: Vec<_> = cmd
+                .unwrap_or_default()
+                .into_iter()
+                .map(|cmd| (language_id, cmd))
+                .collect();
+            cmd
+        })
+        .collect();
 
-    for cmd in &actions {
+    for (_, cmd) in &actions {
         match cmd {
             CodeActionOrCommand::Command(cmd) => info!("Command: {:?}", cmd),
             CodeActionOrCommand::CodeAction(action) => info!("Action: {:?}", action),
         }
     }
 
-    let may_resolve = attempt_server_capability(ctx, &meta, CAPABILITY_CODE_ACTIONS_RESOLVE);
+    let may_resolve: HashSet<_> = ranges
+        .iter()
+        .filter(|(language_id, _)| {
+            let language_id = *language_id;
+            let srv_settings = &ctx.language_servers[language_id];
 
+            attempt_server_capability(
+                (language_id, srv_settings),
+                &meta,
+                CAPABILITY_CODE_ACTIONS_RESOLVE,
+            )
+        })
+        .map(|(language_id, _)| language_id)
+        .collect();
+
+    // TODO: Should pattern contain the server's name?
     if let Some(pattern) = params.code_action_pattern.as_ref() {
         let regex = match regex::Regex::new(pattern) {
             Ok(regex) => regex,
@@ -126,7 +194,7 @@ fn editor_code_actions(
         };
         let matches = actions
             .iter()
-            .filter(|c| {
+            .filter(|(_, c)| {
                 let title = match c {
                     CodeActionOrCommand::Command(command) => &command.title,
                     CodeActionOrCommand::CodeAction(action) => &action.title,
@@ -145,7 +213,11 @@ fn editor_code_actions(
         .to_string();
         let command = match matches.len() {
             0 => fail + " 'no matching action available'",
-            1 => code_action_or_command_to_editor_command(matches[0], sync, may_resolve),
+            1 => {
+                let (language_id, cmd) = matches[0];
+                let may_resolve = may_resolve.contains(language_id);
+                code_action_or_command_to_editor_command(cmd, sync, may_resolve)
+            }
             _ => fail + " 'multiple matching actions'",
         };
         ctx.exec(meta, command);
@@ -154,7 +226,7 @@ fn editor_code_actions(
 
     let titles_and_commands = actions
         .iter()
-        .map(|c| {
+        .map(|(language_id, c)| {
             let mut title: &str = match c {
                 CodeActionOrCommand::Command(command) => &command.title,
                 CodeActionOrCommand::CodeAction(action) => &action.title,
@@ -162,6 +234,7 @@ fn editor_code_actions(
             if let Some((head, _)) = title.split_once('\n') {
                 title = head
             }
+            let may_resolve = may_resolve.contains(language_id);
             let select_cmd = code_action_or_command_to_editor_command(c, false, may_resolve);
             format!("{} {}", editor_quote(title), editor_quote(&select_cmd))
         })
@@ -267,13 +340,16 @@ pub fn text_document_code_action_resolve(
 ) {
     let params = CodeActionResolveParams::deserialize(params)
         .expect("Params should follow CodeActionResolveParams structure");
+    let req_params = serde_json::from_str(&params.code_action).unwrap();
 
     ctx.call::<CodeActionResolveRequest, _>(
         meta,
-        serde_json::from_str(&params.code_action).unwrap(),
-        move |ctx: &mut Context, meta, result| {
-            let cmd = code_action_to_editor_command(&result, false, false);
-            ctx.exec(meta, cmd)
+        RequestParams::All(vec![req_params]),
+        move |ctx: &mut Context, meta, results| {
+            if let Some((_, result)) = results.first() {
+                let cmd = code_action_to_editor_command(result, false, false);
+                ctx.exec(meta, cmd)
+            }
         },
     );
 }
