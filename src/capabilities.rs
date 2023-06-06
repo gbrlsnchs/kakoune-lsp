@@ -459,23 +459,29 @@ pub const CAPABILITY_SIGNATURE_HELP: &str = "lsp-signature-help";
 pub const CAPABILITY_TYPE_DEFINITION: &str = "lsp-type-definition";
 pub const CAPABILITY_WORKSPACE_SYMBOL: &str = "lsp-workspace-symbol";
 
-pub fn attempt_server_capability(ctx: &Context, meta: &EditorMeta, feature: &'static str) -> bool {
-    if server_has_capability(ctx, feature) {
+pub fn attempt_server_capability(
+    srv: (&LanguageId, &ServerSettings),
+    meta: &EditorMeta,
+    feature: &'static str,
+) -> bool {
+    if server_has_capability(srv, feature) {
         return true;
     }
 
     if !meta.hook {
+        let (language_id, _) = srv;
         warn!(
-            "Server does not support {}, refusing to send request",
-            feature
+            "{} server does not support {}, refusing to send request",
+            language_id, feature
         );
     }
 
     false
 }
 
-pub fn server_has_capability(ctx: &Context, feature: &'static str) -> bool {
-    let server_capabilities = match ctx.capabilities.as_ref() {
+pub fn server_has_capability(srv: (&LanguageId, &ServerSettings), feature: &'static str) -> bool {
+    let (language_id, srv_settings) = srv;
+    let server_capabilities = match &srv_settings.capabilities {
         Some(caps) => caps,
         None => return false,
     };
