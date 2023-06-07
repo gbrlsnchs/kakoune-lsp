@@ -152,15 +152,15 @@ pub fn text_document_definition(
             meta,
             req_params,
             move |ctx: &mut Context, meta, results| {
-                if let Some(result) = results.iter().find(|(_, v)| v.is_some()) {
-                    goto(meta, *result, ctx);
+                if let Some(result) = results.into_iter().find(|(_, v)| v.is_some()) {
+                    goto(meta, result, ctx);
                 }
             },
         );
     } else {
         ctx.call::<GotoDefinition, _>(meta, req_params, move |ctx: &mut Context, meta, results| {
-            if let Some(result) = results.iter().find(|(_, v)| v.is_some()) {
-                goto(meta, *result, ctx);
+            if let Some(result) = results.into_iter().find(|(_, v)| v.is_some()) {
+                goto(meta, result, ctx);
             }
         });
     }
@@ -197,8 +197,8 @@ pub fn text_document_implementation(meta: EditorMeta, params: EditorParams, ctx:
         meta,
         RequestParams::Each(req_params),
         move |ctx: &mut Context, meta, results| {
-            if let Some(result) = results.iter().find(|(_, v)| v.is_some()) {
-                goto(meta, *result, ctx);
+            if let Some(result) = results.into_iter().find(|(_, v)| v.is_some()) {
+                goto(meta, result, ctx);
             }
         },
     );
@@ -235,8 +235,8 @@ pub fn text_document_type_definition(meta: EditorMeta, params: EditorParams, ctx
         meta,
         RequestParams::Each(req_params),
         move |ctx: &mut Context, meta, results| {
-            if let Some(result) = results.iter().find(|(_, v)| v.is_some()) {
-                goto(meta, *result, ctx);
+            if let Some(result) = results.into_iter().find(|(_, v)| v.is_some()) {
+                goto(meta, result, ctx);
             }
         },
     );
@@ -276,7 +276,7 @@ pub fn text_document_references(meta: EditorMeta, params: EditorParams, ctx: &mu
         meta,
         RequestParams::Each(req_params),
         move |ctx: &mut Context, meta, results| {
-            if let Some(result) = results.iter().find(|(_, v)| v.is_some()) {
+            if let Some(result) = results.into_iter().find(|(_, v)| v.is_some()) {
                 let (language_id, loc) = result;
                 let loc = loc.map(GotoDefinitionResponse::Array);
                 goto(meta, (language_id.clone(), loc), ctx);
