@@ -210,7 +210,7 @@ pub fn start(
             }
             i => {
                 let msg = op.recv(&srv_rxs[i]);
-                let srv = ctx.language_servers.iter().take(i).last().unwrap();
+                let srv = ctx.language_servers.iter().nth(i).unwrap();
                 let (language_id, srv_settings) = srv;
 
                 if msg.is_err() {
