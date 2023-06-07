@@ -135,6 +135,7 @@ pub struct EditorMeta {
     pub write_response_to_fifo: bool,
     #[serde(default)]
     pub hook: bool,
+    pub language: Option<LanguageId>,
 }
 
 pub type EditorParams = toml::Value;
