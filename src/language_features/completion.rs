@@ -18,20 +18,35 @@ use url::Url;
 
 pub fn text_document_completion(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
     let params = TextDocumentCompletionParams::deserialize(params).unwrap();
-    let req_params = CompletionParams {
-        text_document_position: TextDocumentPositionParams {
-            text_document: TextDocumentIdentifier {
-                uri: Url::from_file_path(&meta.buffile).unwrap(),
-            },
-            position: get_lsp_position(&meta.buffile, &params.position, ctx).unwrap(),
-        },
-        context: None,
-        work_done_progress_params: Default::default(),
-        partial_result_params: Default::default(),
-    };
+    let req_params = ctx
+        .language_servers
+        .iter()
+        .map(|(language_id, srv_settings)| {
+            (
+                language_id.clone(),
+                vec![CompletionParams {
+                    text_document_position: TextDocumentPositionParams {
+                        text_document: TextDocumentIdentifier {
+                            uri: Url::from_file_path(&meta.buffile).unwrap(),
+                        },
+                        position: get_lsp_position(
+                            srv_settings,
+                            &meta.buffile,
+                            &params.position,
+                            ctx,
+                        )
+                        .unwrap(),
+                    },
+                    context: None,
+                    work_done_progress_params: Default::default(),
+                    partial_result_params: Default::default(),
+                }],
+            )
+        })
+        .collect();
     ctx.call::<Completion, _>(
         meta,
-        RequestParams::All(vec![req_params]),
+        RequestParams::Each(req_params),
         |ctx: &mut Context, meta, results| editor_completion(meta, params, results, ctx),
     );
 }

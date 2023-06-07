@@ -38,7 +38,7 @@ pub fn text_document_hover(meta: EditorMeta, params: EditorParams, ctx: &mut Con
     let (range, cursor) = parse_kakoune_range(&params.selection_desc);
     let req_params = eligible_servers
         .into_iter()
-        .map(|(language_id, _)| {
+        .map(|(language_id, srv_settings)| {
             (
                 language_id.clone(),
                 vec![HoverParams {
@@ -46,7 +46,8 @@ pub fn text_document_hover(meta: EditorMeta, params: EditorParams, ctx: &mut Con
                         text_document: TextDocumentIdentifier {
                             uri: Url::from_file_path(&meta.buffile).unwrap(),
                         },
-                        position: get_lsp_position(&meta.buffile, &cursor, ctx).unwrap(),
+                        position: get_lsp_position(srv_settings, &meta.buffile, &cursor, ctx)
+                            .unwrap(),
                     },
                     work_done_progress_params: Default::default(),
                 }],

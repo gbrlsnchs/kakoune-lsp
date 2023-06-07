@@ -121,17 +121,32 @@ pub fn text_document_definition(
     ctx: &mut Context,
 ) {
     let params = PositionParams::deserialize(params).unwrap();
-    let req_params = GotoDefinitionParams {
-        text_document_position_params: TextDocumentPositionParams {
-            text_document: TextDocumentIdentifier {
-                uri: Url::from_file_path(&meta.buffile).unwrap(),
-            },
-            position: get_lsp_position(&meta.buffile, &params.position, ctx).unwrap(),
-        },
-        partial_result_params: Default::default(),
-        work_done_progress_params: Default::default(),
-    };
-    let req_params = RequestParams::All(vec![req_params]);
+    let req_params = ctx
+        .language_servers
+        .iter()
+        .map(|(language_id, srv_settings)| {
+            (
+                language_id.clone(),
+                vec![GotoDefinitionParams {
+                    text_document_position_params: TextDocumentPositionParams {
+                        text_document: TextDocumentIdentifier {
+                            uri: Url::from_file_path(&meta.buffile).unwrap(),
+                        },
+                        position: get_lsp_position(
+                            srv_settings,
+                            &meta.buffile,
+                            &params.position,
+                            ctx,
+                        )
+                        .unwrap(),
+                    },
+                    partial_result_params: Default::default(),
+                    work_done_progress_params: Default::default(),
+                }],
+            )
+        })
+        .collect();
+    let req_params = RequestParams::Each(req_params);
     if declaration {
         ctx.call::<GotoDeclaration, _>(
             meta,
@@ -153,19 +168,34 @@ pub fn text_document_definition(
 
 pub fn text_document_implementation(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
     let params = PositionParams::deserialize(params).unwrap();
-    let req_params = GotoDefinitionParams {
-        text_document_position_params: TextDocumentPositionParams {
-            text_document: TextDocumentIdentifier {
-                uri: Url::from_file_path(&meta.buffile).unwrap(),
-            },
-            position: get_lsp_position(&meta.buffile, &params.position, ctx).unwrap(),
-        },
-        partial_result_params: Default::default(),
-        work_done_progress_params: Default::default(),
-    };
+    let req_params = ctx
+        .language_servers
+        .iter()
+        .map(|(language_id, srv_settings)| {
+            (
+                language_id.clone(),
+                vec![GotoDefinitionParams {
+                    text_document_position_params: TextDocumentPositionParams {
+                        text_document: TextDocumentIdentifier {
+                            uri: Url::from_file_path(&meta.buffile).unwrap(),
+                        },
+                        position: get_lsp_position(
+                            srv_settings,
+                            &meta.buffile,
+                            &params.position,
+                            ctx,
+                        )
+                        .unwrap(),
+                    },
+                    partial_result_params: Default::default(),
+                    work_done_progress_params: Default::default(),
+                }],
+            )
+        })
+        .collect();
     ctx.call::<GotoImplementation, _>(
         meta,
-        RequestParams::All(vec![req_params]),
+        RequestParams::Each(req_params),
         move |ctx: &mut Context, meta, results| {
             if let Some(result) = results.iter().find(|(_, v)| v.is_some()) {
                 goto(meta, *result, ctx);
@@ -176,19 +206,34 @@ pub fn text_document_implementation(meta: EditorMeta, params: EditorParams, ctx:
 
 pub fn text_document_type_definition(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
     let params = PositionParams::deserialize(params).unwrap();
-    let req_params = GotoDefinitionParams {
-        text_document_position_params: TextDocumentPositionParams {
-            text_document: TextDocumentIdentifier {
-                uri: Url::from_file_path(&meta.buffile).unwrap(),
-            },
-            position: get_lsp_position(&meta.buffile, &params.position, ctx).unwrap(),
-        },
-        partial_result_params: Default::default(),
-        work_done_progress_params: Default::default(),
-    };
+    let req_params = ctx
+        .language_servers
+        .iter()
+        .map(|(language_id, srv_settings)| {
+            (
+                language_id.clone(),
+                vec![GotoDefinitionParams {
+                    text_document_position_params: TextDocumentPositionParams {
+                        text_document: TextDocumentIdentifier {
+                            uri: Url::from_file_path(&meta.buffile).unwrap(),
+                        },
+                        position: get_lsp_position(
+                            srv_settings,
+                            &meta.buffile,
+                            &params.position,
+                            ctx,
+                        )
+                        .unwrap(),
+                    },
+                    partial_result_params: Default::default(),
+                    work_done_progress_params: Default::default(),
+                }],
+            )
+        })
+        .collect();
     ctx.call::<GotoTypeDefinition, _>(
         meta,
-        RequestParams::All(vec![req_params]),
+        RequestParams::Each(req_params),
         move |ctx: &mut Context, meta, results| {
             if let Some(result) = results.iter().find(|(_, v)| v.is_some()) {
                 goto(meta, *result, ctx);
@@ -199,22 +244,37 @@ pub fn text_document_type_definition(meta: EditorMeta, params: EditorParams, ctx
 
 pub fn text_document_references(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
     let params = PositionParams::deserialize(params).unwrap();
-    let req_params = ReferenceParams {
-        text_document_position: TextDocumentPositionParams {
-            text_document: TextDocumentIdentifier {
-                uri: Url::from_file_path(&meta.buffile).unwrap(),
-            },
-            position: get_lsp_position(&meta.buffile, &params.position, ctx).unwrap(),
-        },
-        context: ReferenceContext {
-            include_declaration: true,
-        },
-        partial_result_params: Default::default(),
-        work_done_progress_params: Default::default(),
-    };
+    let req_params = ctx
+        .language_servers
+        .iter()
+        .map(|(language_id, srv_settings)| {
+            (
+                language_id.clone(),
+                vec![ReferenceParams {
+                    text_document_position: TextDocumentPositionParams {
+                        text_document: TextDocumentIdentifier {
+                            uri: Url::from_file_path(&meta.buffile).unwrap(),
+                        },
+                        position: get_lsp_position(
+                            srv_settings,
+                            &meta.buffile,
+                            &params.position,
+                            ctx,
+                        )
+                        .unwrap(),
+                    },
+                    context: ReferenceContext {
+                        include_declaration: true,
+                    },
+                    partial_result_params: Default::default(),
+                    work_done_progress_params: Default::default(),
+                }],
+            )
+        })
+        .collect();
     ctx.call::<References, _>(
         meta,
-        RequestParams::All(vec![req_params]),
+        RequestParams::Each(req_params),
         move |ctx: &mut Context, meta, results| {
             if let Some(result) = results.iter().find(|(_, v)| v.is_some()) {
                 let (language_id, loc) = result;

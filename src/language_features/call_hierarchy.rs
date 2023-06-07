@@ -11,19 +11,29 @@ use serde::Deserialize;
 pub fn call_hierarchy_prepare(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
     let params = CallHierarchyParams::deserialize(params)
         .expect("Params should follow CallHierarchyParams structure");
-    let position = get_lsp_position(&meta.buffile, &params.position, ctx).unwrap();
-    let uri = Url::from_file_path(&meta.buffile).unwrap();
-    let prepare_params = CallHierarchyPrepareParams {
-        text_document_position_params: TextDocumentPositionParams {
-            text_document: TextDocumentIdentifier::new(uri),
-            position,
-        },
-        work_done_progress_params: WorkDoneProgressParams::default(),
-    };
+    let req_params = ctx
+        .language_servers
+        .iter()
+        .map(|(language_id, srv_settings)| {
+            let position =
+                get_lsp_position(srv_settings, &meta.buffile, &params.position, ctx).unwrap();
+            let uri = Url::from_file_path(&meta.buffile).unwrap();
+            (
+                language_id.clone(),
+                vec![CallHierarchyPrepareParams {
+                    text_document_position_params: TextDocumentPositionParams {
+                        text_document: TextDocumentIdentifier::new(uri),
+                        position,
+                    },
+                    work_done_progress_params: WorkDoneProgressParams::default(),
+                }],
+            )
+        })
+        .collect();
 
     ctx.call::<CallHierarchyPrepare, _>(
         meta,
-        RequestParams::All(vec![prepare_params]),
+        RequestParams::Each(req_params),
         move |ctx: &mut Context, meta, results| {
             request_call_hierarchy(meta, ctx, params.incoming_or_outgoing, results);
         },
@@ -101,15 +111,15 @@ fn request_call_hierarchy(
 fn format_location(
     meta: &EditorMeta,
     ctx: &mut Context,
-    root_path: &str,
+    srv_settings: &ServerSettings,
     uri: &Url,
     position: Position,
     prefix: &str,
     suffix: &str,
 ) -> String {
     let filename = uri.to_file_path().unwrap();
-    let filename = short_file_path(filename.to_str().unwrap(), root_path);
-    let position = get_kakoune_position_with_fallback(&meta.buffile, position, ctx);
+    let filename = short_file_path(filename.to_str().unwrap(), &srv_settings.root_path);
+    let position = get_kakoune_position_with_fallback(srv_settings, &meta.buffile, position, ctx);
     format!(
         "{}{}:{}:{}: {}\n",
         prefix, filename, position.line, position.column, suffix,
@@ -154,7 +164,7 @@ fn format_call_hierarchy_calls<'a>(
     result: &'a (LanguageId, Option<Vec<impl CallHierarchyCall<'a>>>),
 ) {
     let (language_id, result) = result;
-    let ServerSettings { root_path, .. } = &ctx.language_servers[language_id];
+    let srv_settings = &ctx.language_servers[language_id];
     let result = match result {
         Some(result) => result,
         None => return,
@@ -173,7 +183,7 @@ fn format_call_hierarchy_calls<'a>(
     let contents = format_location(
         &meta,
         ctx,
-        root_path,
+        srv_settings,
         &item.uri,
         item.range.start,
         "",
@@ -188,7 +198,7 @@ fn format_call_hierarchy_calls<'a>(
             format_location(
                 &meta,
                 ctx,
-                root_path,
+                srv_settings,
                 &caller_or_calle.uri,
                 caller_or_calle.range.start,
                 "  ",
@@ -207,7 +217,7 @@ fn format_call_hierarchy_calls<'a>(
                     format_location(
                         &meta,
                         ctx,
-                        root_path,
+                        srv_settings,
                         &caller.uri,
                         range.start,
                         "    ",
@@ -226,7 +236,7 @@ fn format_call_hierarchy_calls<'a>(
     let command = format!(
         "{} {} {}",
         command,
-        editor_quote(&root_path),
+        editor_quote(&srv_settings.root_path),
         editor_quote(&contents),
     );
     ctx.exec(meta, command);
