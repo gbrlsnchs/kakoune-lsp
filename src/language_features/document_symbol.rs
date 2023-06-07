@@ -583,17 +583,22 @@ pub fn object(meta: EditorMeta, editor_params: EditorParams, ctx: &mut Context) 
     };
     ctx.call::<DocumentSymbolRequest, _>(
         meta,
-        req_params,
-        move |ctx: &mut Context, meta, result| editor_object(meta, editor_params, result, ctx),
+        RequestParams::All(vec![req_params]),
+        move |ctx: &mut Context, meta, results| {
+            if let Some(result) = results.into_iter().find(|(_, v)| v.is_some()) {
+                editor_object(meta, editor_params, result, ctx)
+            }
+        },
     );
 }
 
 fn editor_object(
     meta: EditorMeta,
     editor_params: EditorParams,
-    result: Option<DocumentSymbolResponse>,
+    result: (LanguageId, Option<DocumentSymbolResponse>),
     ctx: &mut Context,
 ) {
+    let (language_id, result) = result;
     let params = ObjectParams::deserialize(editor_params).unwrap();
 
     let selections: Vec<(KakouneRange, KakounePosition)> = params
@@ -620,13 +625,14 @@ fn editor_object(
             return;
         }
     };
+    let srv_settings = &ctx.language_servers[&language_id];
     let mut ranges = match result {
         None => return,
         Some(DocumentSymbolResponse::Flat(symbols)) => {
-            flat_symbol_ranges(ctx, document, symbols, symbol_kinds_query)
+            flat_symbol_ranges(ctx, srv_settings, document, symbols, symbol_kinds_query)
         }
         Some(DocumentSymbolResponse::Nested(symbols)) => {
-            flat_symbol_ranges(ctx, document, symbols, symbol_kinds_query)
+            flat_symbol_ranges(ctx, srv_settings, document, symbols, symbol_kinds_query)
         }
     };
 
@@ -680,8 +686,11 @@ fn editor_object(
             } else if forward
                 && cur < matched_pos
                 && (cur.line < matched_pos.line || {
-                    let matched_lsp_pos =
-                        kakoune_position_to_lsp(&matched_pos, &document.text, ctx.offset_encoding);
+                    let matched_lsp_pos = kakoune_position_to_lsp(
+                        &matched_pos,
+                        &document.text,
+                        srv_settings.offset_encoding,
+                    );
                     let line = document.text.line(matched_lsp_pos.line as usize);
                     (matched_lsp_pos.character as usize) < line.len_chars()
                 })
@@ -747,6 +756,7 @@ fn editor_object(
 
 fn flat_symbol_ranges<T: Symbol<T>>(
     ctx: &Context,
+    srv_settings: &ServerSettings,
     document: &Document,
     symbols: Vec<T>,
     symbol_kinds_query: Vec<SymbolKind>,
@@ -771,7 +781,8 @@ fn flat_symbol_ranges<T: Symbol<T>>(
         }
     }
     let mut result = vec![];
-    let convert = |range| lsp_range_to_kakoune(&range, &document.text, ctx.offset_encoding);
+    let convert =
+        |range| lsp_range_to_kakoune(&range, &document.text, srv_settings.offset_encoding);
     for s in symbols {
         walk(&mut result, &symbol_kinds_query, &convert, &s);
     }
@@ -788,14 +799,18 @@ pub fn document_symbol_menu(meta: EditorMeta, editor_params: EditorParams, ctx: 
     };
     ctx.call::<DocumentSymbolRequest, _>(
         meta,
-        req_params,
-        move |ctx: &mut Context, meta, result| {
-            let maybe_goto_symbol = GotoSymbolParams::deserialize(editor_params)
-                .unwrap()
-                .goto_symbol;
-            match maybe_goto_symbol {
-                Some(goto_symbol) => editor_document_symbol_goto(meta, goto_symbol, result, ctx),
-                None => editor_document_symbol_menu(meta, result, ctx),
+        RequestParams::All(vec![req_params]),
+        move |ctx: &mut Context, meta, results| {
+            if let Some(result) = results.into_iter().find(|(_, v)| v.is_some()) {
+                let maybe_goto_symbol = GotoSymbolParams::deserialize(editor_params)
+                    .unwrap()
+                    .goto_symbol;
+                match maybe_goto_symbol {
+                    Some(goto_symbol) => {
+                        editor_document_symbol_goto(meta, goto_symbol, result, ctx)
+                    }
+                    None => editor_document_symbol_menu(meta, result, ctx),
+                }
             }
         },
     );
@@ -803,21 +818,23 @@ pub fn document_symbol_menu(meta: EditorMeta, editor_params: EditorParams, ctx: 
 
 fn editor_document_symbol_menu(
     meta: EditorMeta,
-    result: Option<DocumentSymbolResponse>,
+    result: (LanguageId, Option<DocumentSymbolResponse>),
     ctx: &mut Context,
 ) {
+    let (language_id, result) = result;
+    let srv_settings = &ctx.language_servers[&language_id];
     let choices = match result {
         Some(DocumentSymbolResponse::Flat(result)) => {
             if result.is_empty() {
                 return;
             }
-            symbol_menu(result, &meta, ctx)
+            symbol_menu(result, &meta, srv_settings, ctx)
         }
         Some(DocumentSymbolResponse::Nested(result)) => {
             if result.is_empty() {
                 return;
             }
-            symbol_menu(result, &meta, ctx)
+            symbol_menu(result, &meta, srv_settings, ctx)
         }
         None => return,
     };
@@ -828,21 +845,23 @@ fn editor_document_symbol_menu(
 fn editor_document_symbol_goto(
     meta: EditorMeta,
     goto_symbol: String,
-    result: Option<DocumentSymbolResponse>,
+    result: (LanguageId, Option<DocumentSymbolResponse>),
     ctx: &mut Context,
 ) {
+    let (language_id, result) = result;
+    let srv_settings = &ctx.language_servers[&language_id];
     let navigate_command = match result {
         Some(DocumentSymbolResponse::Flat(result)) => {
             if result.is_empty() {
                 return;
             }
-            symbol_search(result, goto_symbol, &meta, ctx)
+            symbol_search(result, goto_symbol, &meta, srv_settings, ctx)
         }
         Some(DocumentSymbolResponse::Nested(result)) => {
             if result.is_empty() {
                 return;
             }
-            symbol_search(result, goto_symbol, &meta, ctx)
+            symbol_search(result, goto_symbol, &meta, srv_settings, ctx)
         }
         None => return,
     };
@@ -869,12 +888,18 @@ where
     true
 }
 
-fn symbol_menu<T: Symbol<T>>(symbols: Vec<T>, meta: &EditorMeta, ctx: &Context) -> String {
+fn symbol_menu<T: Symbol<T>>(
+    symbols: Vec<T>,
+    meta: &EditorMeta,
+    srv_settings: &ServerSettings,
+    ctx: &Context,
+) -> String {
     let mut menu_cmd = String::new();
     let mut add_symbol = |symbol: &T| {
         let mut filename_path = PathBuf::default();
         let filename = symbol_filename(meta, symbol, &mut filename_path);
-        let range = get_kakoune_range_with_fallback(filename, &symbol.selection_range(), ctx);
+        let range =
+            get_kakoune_range_with_fallback(srv_settings, filename, &symbol.selection_range(), ctx);
         let name = symbol.name();
         write!(
             &mut menu_cmd,
@@ -895,6 +920,7 @@ fn symbol_search<T: Symbol<T>>(
     symbols: Vec<T>,
     goto_symbol: String,
     meta: &EditorMeta,
+    srv_settings: &ServerSettings,
     ctx: &Context,
 ) -> String {
     let mut navigate_cmd = String::new();
@@ -902,7 +928,12 @@ fn symbol_search<T: Symbol<T>>(
         if symbol.name() == goto_symbol {
             let mut filename_path = PathBuf::default();
             let filename = symbol_filename(meta, symbol, &mut filename_path);
-            let range = get_kakoune_range_with_fallback(filename, &symbol.selection_range(), ctx);
+            let range = get_kakoune_range_with_fallback(
+                srv_settings,
+                filename,
+                &symbol.selection_range(),
+                ctx,
+            );
             write!(
                 &mut navigate_cmd,
                 "evaluate-commands '{}'",
