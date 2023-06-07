@@ -185,7 +185,11 @@ pub fn execute_command(meta: EditorMeta, params: EditorParams, ctx: &mut Context
             rust_analyzer::apply_source_change(meta, req_params, ctx);
         }
         _ => {
-            ctx.call::<ExecuteCommand, _>(meta, req_params, move |_: &mut Context, _, _| ());
+            ctx.call::<ExecuteCommand, _>(
+                meta,
+                RequestParams::All(vec![req_params]),
+                move |_: &mut Context, _, _| (),
+            );
         }
     }
 }
