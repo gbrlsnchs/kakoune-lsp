@@ -431,7 +431,7 @@ pub fn initialize(meta: EditorMeta, ctx: &mut Context) {
                     );
             }
             srv_settings.capabilities = Some(result.capabilities);
-            ctx.notify::<Initialized>(InitializedParams {});
+            ctx.notify::<Initialized>((language_id, srv_settings), InitializedParams {});
         }
         controller::dispatch_pending_editor_requests(ctx)
     });
