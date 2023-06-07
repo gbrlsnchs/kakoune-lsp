@@ -12,34 +12,58 @@ use serde::Deserialize;
 use url::Url;
 
 pub fn text_document_signature_help(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
-    if meta.fifo.is_none() && !attempt_server_capability(ctx, &meta, CAPABILITY_SIGNATURE_HELP) {
+    let eligible_servers: Vec<_> = ctx
+        .language_servers
+        .iter()
+        .filter(|srv| attempt_server_capability(*srv, &meta, CAPABILITY_SIGNATURE_HELP))
+        .collect();
+    if meta.fifo.is_none() && eligible_servers.is_empty() {
         return;
     }
 
     let params = PositionParams::deserialize(params).unwrap();
-    let req_params = SignatureHelpParams {
-        context: None,
-        text_document_position_params: TextDocumentPositionParams {
-            text_document: TextDocumentIdentifier {
-                uri: Url::from_file_path(&meta.buffile).unwrap(),
-            },
-            position: get_lsp_position(&meta.buffile, &params.position, ctx).unwrap(),
-        },
-        work_done_progress_params: Default::default(),
-    };
+    let req_params = eligible_servers
+        .into_iter()
+        .map(|(language_id, srv_settings)| {
+            (
+                language_id.clone(),
+                vec![SignatureHelpParams {
+                    context: None,
+                    text_document_position_params: TextDocumentPositionParams {
+                        text_document: TextDocumentIdentifier {
+                            uri: Url::from_file_path(&meta.buffile).unwrap(),
+                        },
+                        position: get_lsp_position(
+                            srv_settings,
+                            &meta.buffile,
+                            &params.position,
+                            ctx,
+                        )
+                        .unwrap(),
+                    },
+                    work_done_progress_params: Default::default(),
+                }],
+            )
+        })
+        .collect();
     ctx.call::<SignatureHelpRequest, _>(
         meta,
-        req_params,
-        move |ctx: &mut Context, meta, result| editor_signature_help(meta, params, result, ctx),
+        RequestParams::Each(req_params),
+        move |ctx: &mut Context, meta, results| {
+            if let Some(result) = results.into_iter().find(|(_, v)| v.is_some()) {
+                editor_signature_help(meta, params, result, ctx)
+            }
+        },
     );
 }
 
 fn editor_signature_help(
     meta: EditorMeta,
     params: PositionParams,
-    result: Option<SignatureHelp>,
+    result: (LanguageId, Option<SignatureHelp>),
     ctx: &mut Context,
 ) {
+    let (language_id, result) = result;
     let result = match result {
         Some(result) => result,
         None => return,
@@ -52,6 +76,7 @@ fn editor_signature_help(
         None => return,
     };
 
+    let srv_settings = &ctx.language_servers[&language_id];
     let active_parameter = active_signature
         .active_parameter
         .or(result.active_parameter)
@@ -71,13 +96,13 @@ fn editor_signature_help(
             let begin = lsp_character_to_byte_offset(
                 label.slice(..),
                 offsets[0] as usize,
-                ctx.offset_encoding,
+                srv_settings.offset_encoding,
             )
             .unwrap();
             let end = lsp_character_to_byte_offset(
                 label.slice(..),
                 offsets[1] as usize,
-                ctx.offset_encoding,
+                srv_settings.offset_encoding,
             )
             .unwrap();
             Some([begin, end])
