@@ -30,7 +30,7 @@ pub fn text_document_rename(meta: EditorMeta, params: EditorParams, ctx: &mut Co
                         )
                         .unwrap(),
                     },
-                    new_name: params.new_name,
+                    new_name: params.new_name.clone(),
                     work_done_progress_params: Default::default(),
                 }],
             )
@@ -54,6 +54,5 @@ fn editor_rename(meta: EditorMeta, result: (LanguageId, Option<WorkspaceEdit>), 
         return;
     }
     let result = result.unwrap();
-    let srv_settings = &ctx.language_servers[&language_id];
-    workspace::apply_edit(meta, srv_settings, result, ctx);
+    workspace::apply_edit(&language_id, meta, result, ctx);
 }

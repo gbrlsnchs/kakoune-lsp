@@ -310,7 +310,7 @@ fn editor_next_or_prev_symbol(
         }
     };
 
-    editor_next_or_prev_for_details(meta, srv, ctx, maybe_details, hover);
+    editor_next_or_prev_for_details(&language_id, meta, ctx, maybe_details, hover);
 }
 
 /// Send the response back to Kakoune. This could be either:
@@ -318,8 +318,8 @@ fn editor_next_or_prev_symbol(
 /// b) Instructions to show hover information of the next/previous symbol (without actually
 /// moving the cursor just yet).
 fn editor_next_or_prev_for_details(
+    language_id: &LanguageId,
     meta: EditorMeta,
-    srv: (&LanguageId, &ServerSettings),
     ctx: &mut Context,
     maybe_details: Option<(String, KakounePosition, String, SymbolKind)>,
     hover: bool,
@@ -338,13 +338,13 @@ fn editor_next_or_prev_for_details(
         }
     };
 
-    let (language_id, srv_settings) = srv;
+    let server = &ctx.language_servers[language_id];
     if !hover {
         let path = Path::new(&filename);
         let filename_abs = if path.is_absolute() {
             filename
         } else {
-            Path::new(&srv_settings.root_path)
+            Path::new(&server.root_path)
                 .join(filename)
                 .to_str()
                 .unwrap()
@@ -360,23 +360,19 @@ fn editor_next_or_prev_for_details(
         return;
     }
 
-    let req_params = {
-        let m = HashMap::new();
-        m.insert(
-            language_id.clone(),
-            vec![HoverParams {
-                text_document_position_params: TextDocumentPositionParams {
-                    text_document: TextDocumentIdentifier {
-                        uri: Url::from_file_path(&meta.buffile).unwrap(),
-                    },
-                    position: get_lsp_position(srv_settings, &meta.buffile, &symbol_position, ctx)
-                        .unwrap(),
+    let mut req_params = HashMap::new();
+    req_params.insert(
+        language_id.clone(),
+        vec![HoverParams {
+            text_document_position_params: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier {
+                    uri: Url::from_file_path(&meta.buffile).unwrap(),
                 },
-                work_done_progress_params: Default::default(),
-            }],
-        );
-        m
-    };
+                position: get_lsp_position(server, &meta.buffile, &symbol_position, ctx).unwrap(),
+            },
+            work_done_progress_params: Default::default(),
+        }],
+    );
 
     let modal_heading = format!(
         "line {}:{}:{{+b@InfoHeader}}{:?} {}{{InfoHeader}} \
@@ -629,10 +625,10 @@ fn editor_object(
     let mut ranges = match result {
         None => return,
         Some(DocumentSymbolResponse::Flat(symbols)) => {
-            flat_symbol_ranges(ctx, srv_settings, document, symbols, symbol_kinds_query)
+            flat_symbol_ranges(srv_settings, document, symbols, symbol_kinds_query)
         }
         Some(DocumentSymbolResponse::Nested(symbols)) => {
-            flat_symbol_ranges(ctx, srv_settings, document, symbols, symbol_kinds_query)
+            flat_symbol_ranges(srv_settings, document, symbols, symbol_kinds_query)
         }
     };
 
@@ -755,7 +751,6 @@ fn editor_object(
 }
 
 fn flat_symbol_ranges<T: Symbol<T>>(
-    ctx: &Context,
     srv_settings: &ServerSettings,
     document: &Document,
     symbols: Vec<T>,

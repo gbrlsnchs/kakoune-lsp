@@ -85,7 +85,7 @@ pub fn start(
         language_servers: routes
             .iter()
             .map(|route| {
-                let (tx, offset_encoding) = language_servers[&route.language];
+                let (tx, offset_encoding) = &language_servers[&route.language];
                 let tx = tx.to_lang_server.sender().clone();
 
                 (
@@ -93,7 +93,7 @@ pub fn start(
                     ServerSettings {
                         root_path: route.root.clone(),
                         offset_encoding: offset_encoding.unwrap_or_default(),
-                        preferred_offset_encoding: offset_encoding,
+                        preferred_offset_encoding: offset_encoding.clone(),
                         capabilities: None,
                         tx,
                     },
@@ -111,10 +111,11 @@ pub fn start(
     let mut file_watcher: Option<FileWatcher> = None;
 
     'event_loop: loop {
+        let never_rx = never();
         let from_file_watcher = file_watcher
             .as_ref()
             .map(|fw| fw.worker.receiver())
-            .unwrap_or(&never());
+            .unwrap_or(&never_rx);
         let from_pending_file_watcher = &file_watcher
             .as_ref()
             .and_then(
@@ -137,7 +138,7 @@ pub fn start(
             .collect();
         // Server receivers are registered first so we can match their order
         // with servers in the context.
-        for rx in srv_rxs {
+        for rx in &srv_rxs {
             sel.recv(rx);
         }
         let from_editor_op = sel.recv(&from_editor);
@@ -201,17 +202,26 @@ pub fn start(
 
                 let fw = file_watcher.as_mut().unwrap();
                 if !fw.pending_file_events.is_empty() {
-                    let file_events = fw.pending_file_events.drain().collect();
-                    for srv in &ctx.language_servers {
-                        workspace_did_change_watched_files(srv, file_events, &mut ctx);
+                    let file_events: Vec<_> = fw.pending_file_events.drain().collect();
+                    let servers: Vec<_> = ctx.language_servers.keys().cloned().collect();
+                    for language_id in &servers {
+                        workspace_did_change_watched_files(
+                            &language_id,
+                            file_events.clone(),
+                            &mut ctx,
+                        );
                     }
                     fw.pending_file_events.clear();
                 }
             }
             i => {
                 let msg = op.recv(&srv_rxs[i]);
-                let srv = ctx.language_servers.iter().nth(i).unwrap();
-                let (language_id, srv_settings) = srv;
+                let language_id = ctx
+                    .language_servers
+                    .iter()
+                    .nth(i)
+                    .map(|(s, _)| s.clone())
+                    .unwrap();
 
                 if msg.is_err() {
                     break 'event_loop;
@@ -221,16 +231,16 @@ pub fn start(
                     ServerMessage::Request(call) => match call {
                         Call::MethodCall(request) => {
                             dispatch_server_request(
+                                &language_id,
                                 initial_request_meta.clone(),
-                                srv,
                                 request,
                                 &mut ctx,
                             );
                         }
                         Call::Notification(notification) => {
                             dispatch_server_notification(
+                                &language_id,
                                 initial_request_meta.clone(),
-                                srv,
                                 &notification.method,
                                 notification.params,
                                 &mut ctx,
@@ -301,17 +311,19 @@ pub fn start(
                                         continue;
                                     }
                                     if let Some((vals, callback)) = ctx.batches.remove(&batch_id) {
-                                        if let Some(batch_seq) = ctx.batch_sizes.remove(&batch_id) {
-                                            batch_seq.remove(language_id);
+                                        if let Some(mut batch_seq) =
+                                            ctx.batch_sizes.remove(&batch_id)
+                                        {
+                                            batch_seq.remove(&language_id);
 
                                             // We con only keep going if there are still other servers to respond.
                                             // Otherwise, skip the following block and handle failure.
                                             if !batch_seq.is_empty() {
                                                 // Remove this failing language server from the batch, allowing
                                                 // working ones to still be handled.
-                                                vals = vals
+                                                let vals: Vec<_> = vals
                                                     .into_iter()
-                                                    .filter(|(id, _)| id != language_id)
+                                                    .filter(|(id, _)| *id != language_id)
                                                     .collect();
 
                                                 // Scenario: this failing server is holding back the response handling
@@ -482,36 +494,39 @@ fn dispatch_incoming_editor_request(request: EditorRequest, ctx: &mut Context) {
 }
 
 fn dispatch_editor_request(request: EditorRequest, ctx: &mut Context) {
-    for srv in &ctx.language_servers {
-        ensure_did_open(srv, &request, ctx);
+    // Clone all language servers to make borrow checker happy.
+    let servers: Vec<_> = ctx.language_servers.keys().cloned().collect();
+
+    for language_id in &servers {
+        ensure_did_open(language_id, &request, ctx);
     }
     let method: &str = &request.method;
     let meta = request.meta;
     let params = request.params;
     match method {
         notification::DidOpenTextDocument::METHOD => {
-            for srv in &ctx.language_servers {
-                text_document_did_open(srv, meta, params, ctx);
+            for language_id in &servers {
+                text_document_did_open(language_id, meta.clone(), params.clone(), ctx);
             }
         }
         notification::DidChangeTextDocument::METHOD => {
-            for srv in &ctx.language_servers {
-                text_document_did_change(srv, meta, params, ctx);
+            for language_id in &servers {
+                text_document_did_change(language_id, meta.clone(), params.clone(), ctx);
             }
         }
         notification::DidCloseTextDocument::METHOD => {
-            for srv in &ctx.language_servers {
-                text_document_did_close(srv, meta, ctx);
+            for language_id in &servers {
+                text_document_did_close(language_id, meta.clone(), ctx);
             }
         }
         notification::DidSaveTextDocument::METHOD => {
-            for srv in &ctx.language_servers {
-                text_document_did_save(srv, meta, ctx);
+            for language_id in &servers {
+                text_document_did_save(language_id, meta.clone(), ctx);
             }
         }
         notification::DidChangeConfiguration::METHOD => {
-            for srv in &ctx.language_servers {
-                workspace::did_change_configuration(srv, meta, params, ctx);
+            for language_id in &servers {
+                workspace::did_change_configuration(language_id, meta.clone(), params.clone(), ctx);
             }
         }
         request::CallHierarchyPrepare::METHOD => {
@@ -551,14 +566,14 @@ fn dispatch_editor_request(request: EditorRequest, ctx: &mut Context) {
             goto::text_document_references(meta, params, ctx);
         }
         notification::Exit::METHOD => {
-            for srv in &ctx.language_servers {
-                ctx.notify::<notification::Exit>(srv, ());
+            for language_id in &servers {
+                ctx.notify::<notification::Exit>(language_id, ());
             }
         }
 
         notification::WorkDoneProgressCancel::METHOD => {
-            for srv in &ctx.language_servers {
-                progress::work_done_progress_cancel(srv, meta, params, ctx);
+            for language_id in &servers {
+                progress::work_done_progress_cancel(language_id, meta.clone(), params.clone(), ctx);
             }
         }
         request::SelectionRangeRequest::METHOD => {
@@ -604,9 +619,8 @@ fn dispatch_editor_request(request: EditorRequest, ctx: &mut Context) {
             capabilities::capabilities(meta, ctx);
         }
         "apply-workspace-edit" => {
-            if let Some(srv) = ctx.language_servers.first_key_value() {
-                let (_, srv_settings) = srv;
-                workspace::apply_edit_from_editor(meta, srv_settings, params, ctx);
+            if let Some(language_id) = servers.first() {
+                workspace::apply_edit_from_editor(language_id, meta, params, ctx);
             }
         }
         request::SemanticTokensFullRequest::METHOD => {
@@ -618,13 +632,13 @@ fn dispatch_editor_request(request: EditorRequest, ctx: &mut Context) {
         }
 
         show_message::SHOW_MESSAGE_REQUEST_NEXT => {
-            for srv in &ctx.language_servers {
-                show_message::show_message_request_next(meta, srv, ctx);
+            for language_id in &servers {
+                show_message::show_message_request_next(language_id, meta.clone(), ctx);
             }
         }
         show_message::SHOW_MESSAGE_REQUEST_RESPOND => {
-            for srv in &ctx.language_servers {
-                show_message::show_message_request_respond(params, srv, ctx);
+            for language_id in &servers {
+                show_message::show_message_request_respond(language_id, params.clone(), ctx);
             }
         }
 
@@ -675,16 +689,15 @@ fn dispatch_editor_request(request: EditorRequest, ctx: &mut Context) {
 }
 
 fn dispatch_server_request(
+    language_id: &LanguageId,
     meta: EditorMeta,
-    srv: (&LanguageId, &ServerSettings),
     request: MethodCall,
     ctx: &mut Context,
 ) {
-    let (language_id, srv_settings) = srv;
     let method: &str = &request.method;
     let result = match method {
         request::ApplyWorkspaceEdit::METHOD => {
-            workspace::apply_edit_from_server(srv_settings, request.params, ctx)
+            workspace::apply_edit_from_server(language_id, request.params, ctx)
         }
         request::RegisterCapability::METHOD => {
             let params: RegistrationParams = request
@@ -695,7 +708,7 @@ fn dispatch_server_request(
                 match registration.method.as_str() {
                     notification::DidChangeWatchedFiles::METHOD => {
                         register_workspace_did_change_watched_files(
-                            srv,
+                            language_id,
                             registration.register_options,
                             ctx,
                         )
@@ -711,9 +724,10 @@ fn dispatch_server_request(
             Ok(serde_json::Value::Null)
         }
         request::WorkspaceFoldersRequest::METHOD => {
+            let server = &ctx.language_servers[language_id];
             Ok(serde_json::to_value(vec![WorkspaceFolder {
-                uri: Url::from_file_path(&srv_settings.root_path).unwrap(),
-                name: srv_settings.root_path.to_string(),
+                uri: Url::from_file_path(&server.root_path).unwrap(),
+                name: server.root_path.to_string(),
             }])
             .ok()
             .unwrap())
@@ -721,7 +735,9 @@ fn dispatch_server_request(
         request::WorkDoneProgressCreate::METHOD => {
             progress::work_done_progress_create(request.params, ctx)
         }
-        request::WorkspaceConfiguration::METHOD => workspace::configuration(request.params, ctx),
+        request::WorkspaceConfiguration::METHOD => {
+            workspace::configuration(request.params, language_id, ctx)
+        }
         request::ShowMessageRequest::METHOD => {
             return show_message::show_message_request(meta, request, ctx);
         }
@@ -733,12 +749,12 @@ fn dispatch_server_request(
         }
     };
 
-    ctx.reply(srv, request.id, result);
+    ctx.reply(language_id, request.id, result);
 }
 
 fn dispatch_server_notification(
+    language_id: &LanguageId,
     meta: EditorMeta,
-    srv: (&LanguageId, &ServerSettings),
     method: &str,
     params: Params,
     ctx: &mut Context,
@@ -748,10 +764,10 @@ fn dispatch_server_notification(
             progress::dollar_progress(meta, params, ctx);
         }
         notification::PublishDiagnostics::METHOD => {
-            diagnostics::publish_diagnostics(params, srv, ctx);
+            diagnostics::publish_diagnostics(language_id, params, ctx);
         }
         "$cquery/publishSemanticHighlighting" => {
-            cquery::publish_semantic_highlighting(params, srv, ctx);
+            cquery::publish_semantic_highlighting(language_id, params, ctx);
         }
         "$ccls/publishSemanticHighlight" => {
             ccls::publish_semantic_highlighting(params, ctx);
@@ -795,24 +811,30 @@ fn dispatch_server_notification(
 ///
 /// In a normal situation, such extra request is not required, and `ensure_did_open` short-circuits
 /// most of the time in `if buffile.is_empty() || ctx.documents.contains_key(buffile)` condition.
-fn ensure_did_open(
-    srv: (&LanguageId, &ServerSettings),
-    request: &EditorRequest,
-    ctx: &mut Context,
-) {
+fn ensure_did_open(language_id: &LanguageId, request: &EditorRequest, ctx: &mut Context) {
     let buffile = &request.meta.buffile;
     if buffile.is_empty() || ctx.documents.contains_key(buffile) {
         return;
     };
     if request.method == notification::DidChangeTextDocument::METHOD {
-        text_document_did_open(srv, request.meta.clone(), request.params.clone(), ctx);
+        text_document_did_open(
+            language_id,
+            request.meta.clone(),
+            request.params.clone(),
+            ctx,
+        );
         return;
     }
     match read_document(buffile) {
         Ok(draft) => {
             let mut params = toml::value::Table::default();
             params.insert("draft".to_string(), toml::Value::String(draft));
-            text_document_did_open(srv, request.meta.clone(), toml::Value::Table(params), ctx);
+            text_document_did_open(
+                language_id,
+                request.meta.clone(),
+                toml::Value::Table(params),
+                ctx,
+            );
         }
         Err(err) => error!(
             "Failed to read file {} to simulate textDocument/didOpen: {}",

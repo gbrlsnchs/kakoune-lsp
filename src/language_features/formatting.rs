@@ -27,7 +27,7 @@ pub fn text_document_formatting(meta: EditorMeta, params: EditorParams, ctx: &mu
                     text_document: TextDocumentIdentifier {
                         uri: Url::from_file_path(&meta.buffile).unwrap(),
                     },
-                    options: params,
+                    options: params.clone(),
                     work_done_progress_params: Default::default(),
                 }],
             )

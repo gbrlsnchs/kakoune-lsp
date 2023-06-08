@@ -1,4 +1,4 @@
-use crate::context::{Context, RequestParams, ServerSettings};
+use crate::context::{Context, RequestParams};
 use crate::position::*;
 use crate::types::{EditorMeta, EditorParams, KakouneRange, LanguageId, PositionParams};
 use crate::util::{editor_quote, short_file_path};
@@ -32,14 +32,13 @@ pub fn goto(
             .collect(),
         None => return,
     };
-    let srv_settings = &ctx.language_servers[&language_id];
     match locations.len() {
         0 => {}
         1 => {
-            goto_location(meta, srv_settings, &locations[0], ctx);
+            goto_location(&language_id, meta, &locations[0], ctx);
         }
         _ => {
-            goto_locations(meta, srv_settings, &locations, ctx);
+            goto_locations(&language_id, meta, &locations, ctx);
         }
     }
 }
@@ -55,15 +54,16 @@ pub fn edit_at_range(buffile: &str, range: KakouneRange) -> String {
 }
 
 fn goto_location(
+    language_id: &LanguageId,
     meta: EditorMeta,
-    srv_settings: &ServerSettings,
     Location { uri, range }: &Location,
     ctx: &mut Context,
 ) {
     let path = uri.to_file_path().unwrap();
     let path_str = path.to_str().unwrap();
     if let Some(contents) = get_file_contents(path_str, ctx) {
-        let range = lsp_range_to_kakoune(range, &contents, srv_settings.offset_encoding);
+        let server = &ctx.language_servers[language_id];
+        let range = lsp_range_to_kakoune(range, &contents, server.offset_encoding);
         let command = format!(
             "evaluate-commands -try-client %opt{{jumpclient}} -- {}",
             editor_quote(&edit_at_range(path_str, range)),
@@ -73,11 +73,12 @@ fn goto_location(
 }
 
 fn goto_locations(
+    language_id: &LanguageId,
     meta: EditorMeta,
-    srv_settings: &ServerSettings,
     locations: &[Location],
     ctx: &mut Context,
 ) {
+    let server = &ctx.language_servers[language_id];
     let select_location = locations
         .iter()
         .group_by(|Location { uri, .. }| uri.to_file_path().unwrap())
@@ -90,14 +91,13 @@ fn goto_locations(
             };
             locations
                 .map(|Location { range, .. }| {
-                    let pos =
-                        lsp_range_to_kakoune(range, &contents, srv_settings.offset_encoding).start;
+                    let pos = lsp_range_to_kakoune(range, &contents, server.offset_encoding).start;
                     if range.start.line as usize >= contents.len_lines() {
                         return "".into();
                     }
                     format!(
                         "{}:{}:{}:{}",
-                        short_file_path(path_str, &srv_settings.root_path),
+                        short_file_path(path_str, &server.root_path),
                         pos.line,
                         pos.column,
                         contents.line(range.start.line as usize),
@@ -108,7 +108,7 @@ fn goto_locations(
         .join("");
     let command = format!(
         "lsp-show-goto-choices {} {}",
-        editor_quote(&srv_settings.root_path),
+        editor_quote(&server.root_path),
         editor_quote(&select_location),
     );
     ctx.exec(meta, command);

@@ -14,12 +14,11 @@ use std::fs;
 use std::io;
 
 pub fn did_change_configuration(
-    srv: (&LanguageId, &ServerSettings),
+    language_id: &LanguageId,
     meta: EditorMeta,
     mut params: EditorParams,
     ctx: &mut Context,
 ) {
-    let (language_id, srv_settings) = srv;
     let mut default_settings = toml::value::Table::new();
 
     let raw_settings = params
@@ -45,32 +44,35 @@ pub fn did_change_configuration(
         .language
         .get(language_id)
         .and_then(|lang| lang.settings.as_ref());
-    let settings = configured_section(language_id, &ctx.config, settings).unwrap_or_else(|| {
+    let settings = configured_section(ctx, language_id, settings).unwrap_or_else(|| {
         if !raw_settings.is_empty() {
             Value::Object(explode_string_table(raw_settings))
         } else {
             let language = ctx.config.language.get(language_id).unwrap();
-            configured_section(language_id, &ctx.config, language.settings.as_ref())
-                .unwrap_or_default()
+            configured_section(ctx, language_id, language.settings.as_ref()).unwrap_or_default()
         }
     });
 
     let params = DidChangeConfigurationParams { settings };
-    ctx.notify::<DidChangeConfiguration>(srv, params);
+    ctx.notify::<DidChangeConfiguration>(language_id, params);
 }
 
-pub fn configuration(params: Params, ctx: &mut Context) -> Result<Value, jsonrpc_core::Error> {
+pub fn configuration(
+    params: Params,
+    language_id: &LanguageId,
+    ctx: &mut Context,
+) -> Result<Value, jsonrpc_core::Error> {
     let params = params.parse::<ConfigurationParams>()?;
 
     let settings = ctx
         .dynamic_config
         .language
-        .get(&ctx.language_id)
+        .get(language_id)
         .and_then(|cfg| cfg.settings.as_ref().cloned())
         .or_else(|| {
             ctx.config
                 .language
-                .get(&ctx.language_id)
+                .get(language_id)
                 .and_then(|conf| conf.settings.as_ref().cloned())
         });
 
@@ -265,8 +267,8 @@ pub fn apply_document_resource_op(
 
 // TODO handle version, so change is not applied if buffer is modified (and need to show a warning)
 pub fn apply_edit(
+    language_id: &LanguageId,
     meta: EditorMeta,
-    srv_settings: &ServerSettings,
     edit: WorkspaceEdit,
     ctx: &mut Context,
 ) -> ApplyWorkspaceEditResponse {
@@ -275,8 +277,8 @@ pub fn apply_edit(
             DocumentChanges::Edits(edits) => {
                 for edit in edits {
                     apply_annotated_text_edits(
+                        language_id,
                         &meta,
-                        srv_settings,
                         edit.text_document.uri,
                         edit.edits,
                         ctx,
@@ -288,8 +290,8 @@ pub fn apply_edit(
                     match op {
                         DocumentChangeOperation::Edit(edit) => {
                             apply_annotated_text_edits(
+                                language_id,
                                 &meta,
-                                srv_settings,
                                 edit.text_document.uri,
                                 edit.edits,
                                 ctx,
@@ -311,7 +313,7 @@ pub fn apply_edit(
         }
     } else if let Some(changes) = edit.changes {
         for (uri, change) in changes {
-            apply_text_edits(&meta, srv_settings, uri, change, ctx);
+            apply_text_edits(language_id, &meta, uri, change, ctx);
         }
     }
     ApplyWorkspaceEditResponse {
@@ -327,8 +329,8 @@ struct EditorApplyEdit {
 }
 
 pub fn apply_edit_from_editor(
+    language_id: &LanguageId,
     meta: EditorMeta,
-    srv_settings: &ServerSettings,
     params: EditorParams,
     ctx: &mut Context,
 ) {
@@ -336,16 +338,16 @@ pub fn apply_edit_from_editor(
     let edit = WorkspaceEdit::deserialize(serde_json::from_str::<Value>(&params.edit).unwrap())
         .expect("Failed to parse edit");
 
-    apply_edit(meta, srv_settings, edit, ctx);
+    apply_edit(language_id, meta, edit, ctx);
 }
 
 pub fn apply_edit_from_server(
-    srv_settings: &ServerSettings,
+    language_id: &LanguageId,
     params: Params,
     ctx: &mut Context,
 ) -> Result<Value, jsonrpc_core::Error> {
     let params: ApplyWorkspaceEditParams = params.parse()?;
     let meta = meta_for_session(ctx.session.clone(), None);
-    let response = apply_edit(meta, srv_settings, params.edit, ctx);
+    let response = apply_edit(language_id, meta, params.edit, ctx);
     Ok(serde_json::to_value(response).unwrap())
 }

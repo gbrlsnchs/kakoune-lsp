@@ -11,8 +11,7 @@ use lsp_types::*;
 use std::collections::HashMap;
 use std::fmt::Write as _;
 
-pub fn publish_diagnostics(params: Params, srv: (&LanguageId, &ServerSettings), ctx: &mut Context) {
-    let (language_id, srv_settings) = srv;
+pub fn publish_diagnostics(language_id: &LanguageId, params: Params, ctx: &mut Context) {
     let params: PublishDiagnosticsParams = params.parse().expect("Failed to parse params");
     let path = params.uri.to_file_path().unwrap();
     let buffile = path.to_str().unwrap();
@@ -36,10 +35,10 @@ pub fn publish_diagnostics(params: Params, srv: (&LanguageId, &ServerSettings), 
         .sorted_unstable_by_key(|(_, x)| x.severity)
         .rev()
         .map(|(language_id, x)| {
-            let srv_settings = &ctx.language_servers[language_id];
+            let server = &ctx.language_servers[language_id];
             format!(
                 "{}|{}",
-                lsp_range_to_kakoune(&x.range, &document.text, srv_settings.offset_encoding),
+                lsp_range_to_kakoune(&x.range, &document.text, server.offset_encoding),
                 match x.severity {
                     Some(DiagnosticSeverity::ERROR) => "DiagnosticError",
                     Some(DiagnosticSeverity::HINT) => "DiagnosticHint",

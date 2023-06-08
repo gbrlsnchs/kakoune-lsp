@@ -22,9 +22,9 @@ pub fn text_document_code_lens(meta: EditorMeta, ctx: &mut Context) {
     let eligible_servers: Vec<_> = ctx
         .language_servers
         .iter()
-        .filter(|srv| {
-            server_has_capability(*srv, CAPABILITY_CODE_LENS)
-                && server_has_capability(*srv, CAPABILITY_EXECUTE_COMMANDS)
+        .filter(|(_, server)| {
+            server_has_capability(server, CAPABILITY_CODE_LENS)
+                && server_has_capability(server, CAPABILITY_EXECUTE_COMMANDS)
         })
         .collect();
     if eligible_servers.is_empty() {
@@ -52,7 +52,11 @@ fn editor_code_lens(
 ) {
     let mut lenses: Vec<_> = results
         .into_iter()
-        .flat_map(|(language_id, v)| v.unwrap_or_default().into_iter().map(|v| (language_id, v)))
+        .flat_map(|(language_id, v)| {
+            v.unwrap_or_default()
+                .into_iter()
+                .map(move |v| (language_id.clone(), v))
+        })
         .collect();
     lenses.sort_by_key(|(_, lens)| lens.range.start);
 
@@ -160,7 +164,7 @@ pub fn resolve_and_perform_code_lens(meta: EditorMeta, params: EditorParams, ctx
             let range = kakoune_range_to_lsp(&range, &document.text, *offset_encoding);
             ranges_touch_same_line(lens.range, range)
         })
-        .map(|(a, b)| (*a, *b))
+        .map(|(a, b)| (a.clone(), b.clone()))
         .collect::<Vec<_>>();
 
     if lenses.is_empty() {

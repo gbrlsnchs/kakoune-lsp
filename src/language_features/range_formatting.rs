@@ -44,17 +44,26 @@ pub fn text_document_range_formatting(meta: EditorMeta, params: EditorParams, ct
         meta,
         RequestParams::Each(req_params),
         move |ctx, meta, results| {
-            if let Some((first_id, _)) = results.iter().find(|(_, v)| v.is_some()) {
-                let results: Vec<_> = results
-                    .into_iter()
-                    .filter(|(language_id, _)| language_id == first_id)
-                    .collect();
+            let mut server = None;
+            // First non-empty batches (all from the same server).
+            let results: Vec<_> = results
+                .into_iter()
+                .filter(|(id, v)| match &server {
+                    Some(chosen) => id == chosen && v.is_some(),
+                    None if v.is_some() => {
+                        server = Some(id.clone());
+                        true
+                    }
+                    _ => false,
+                })
+                .collect();
+            if let Some(first_id) = server {
                 let text_edits = results
                     .into_iter()
-                    .flat_map(|(_, v)| v)
+                    .flat_map(|(_, v)| v.clone())
                     .flatten()
                     .collect::<Vec<_>>();
-                editor_range_formatting(meta, (*first_id, text_edits), ctx)
+                editor_range_formatting(meta, (first_id, text_edits), ctx)
             }
         },
     );

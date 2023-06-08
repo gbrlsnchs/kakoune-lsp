@@ -10,12 +10,13 @@ pub fn organize_imports(meta: EditorMeta, ctx: &mut Context) {
     let file_uri = Url::from_file_path(&meta.buffile).unwrap();
 
     let file_uri: String = file_uri.into();
-    let (language_id, srv_settings) = meta
+    let mut req_params = HashMap::new();
+    let (language_id, _) = meta
         .language
-        .and_then(|id| ctx.language_servers.get_key_value(&id))
+        .as_ref()
+        .and_then(|id| ctx.language_servers.get_key_value(id))
         .or_else(|| ctx.language_servers.first_key_value())
         .unwrap();
-    let mut req_params = HashMap::new();
     req_params.insert(
         language_id.clone(),
         vec![ExecuteCommandParams {

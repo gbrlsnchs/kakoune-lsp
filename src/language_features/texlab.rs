@@ -43,7 +43,8 @@ pub fn forward_search(meta: EditorMeta, params: EditorParams, ctx: &mut Context)
     let params = PositionParams::deserialize(params).unwrap();
     let (language_id, srv_settings) = meta
         .language
-        .and_then(|id| ctx.language_servers.get_key_value(&id))
+        .as_ref()
+        .and_then(|id| ctx.language_servers.get_key_value(id))
         .or_else(|| ctx.language_servers.first_key_value())
         .unwrap();
     let mut req_params = HashMap::new();
@@ -61,13 +62,13 @@ pub fn forward_search(meta: EditorMeta, params: EditorParams, ctx: &mut Context)
         RequestParams::Each(req_params),
         move |ctx, meta, results| {
             if let Some((_, response)) = results.first() {
-                forward_search_response(meta, *response, ctx)
+                forward_search_response(meta, response, ctx)
             }
         },
     );
 }
 
-pub fn forward_search_response(meta: EditorMeta, result: ForwardSearchResult, ctx: &mut Context) {
+pub fn forward_search_response(meta: EditorMeta, result: &ForwardSearchResult, ctx: &mut Context) {
     let command = format!("echo {}", result);
     ctx.exec(meta, command);
 }
@@ -80,7 +81,7 @@ impl Request for Build {
     const METHOD: &'static str = "textDocument/build";
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct BuildTextDocumentParams {
     text_document: TextDocumentIdentifier,
@@ -107,9 +108,10 @@ impl fmt::Display for BuildResult {
 }
 
 pub fn build(meta: EditorMeta, _params: EditorParams, ctx: &mut Context) {
-    let (language_id, srv_settings) = meta
+    let (language_id, _) = meta
         .language
-        .and_then(|id| ctx.language_servers.get_key_value(&id))
+        .as_ref()
+        .and_then(|id| ctx.language_servers.get_key_value(id))
         .or_else(|| ctx.language_servers.first_key_value())
         .unwrap();
     let mut req_params = HashMap::new();
@@ -126,13 +128,13 @@ pub fn build(meta: EditorMeta, _params: EditorParams, ctx: &mut Context) {
         RequestParams::Each(req_params),
         move |ctx, meta, results| {
             if let Some((_, response)) = results.first() {
-                build_response(meta, *response, ctx)
+                build_response(meta, response, ctx)
             }
         },
     );
 }
 
-pub fn build_response(meta: EditorMeta, result: BuildResult, ctx: &mut Context) {
+pub fn build_response(meta: EditorMeta, result: &BuildResult, ctx: &mut Context) {
     let command = format!("echo {}", result);
     ctx.exec(meta, command);
 }

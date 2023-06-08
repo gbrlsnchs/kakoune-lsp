@@ -51,7 +51,7 @@ pub struct ServerSettings {
 }
 
 pub struct Context {
-    batch_counter: BatchNumber,
+    batch_count: BatchCount,
     pub batch_sizes: HashMap<BatchNumber, HashMap<LanguageId, usize>>,
     pub batches: HashMap<
         BatchNumber,
@@ -96,7 +96,7 @@ impl Context {
     pub fn new(params: ContextBuilder) -> Self {
         let session = params.initial_request.meta.session.clone();
         Context {
-            batch_counter: 0,
+            batch_count: 0,
             batch_sizes: Default::default(),
             batches: Default::default(),
             code_lenses: Default::default(),
@@ -130,13 +130,14 @@ impl Context {
         params: RequestParams<R::Params>,
         callback: F,
     ) where
-        R::Params: IntoParams,
+        R::Params: IntoParams + Clone,
         R::Result: for<'a> Deserialize<'a>,
     {
         let ops = match params {
             RequestParams::All(params) => {
                 let mut ops = Vec::with_capacity(params.len() * self.language_servers.len());
                 for language_id in self.language_servers.keys() {
+                    let params: Vec<_> = params.iter().cloned().collect();
                     for params in params {
                         ops.push((language_id.clone(), params));
                     }
@@ -147,7 +148,7 @@ impl Context {
                 .into_iter()
                 .flat_map(|(key, ops)| {
                     let ops: Vec<(LanguageId, <R as Request>::Params)> =
-                        ops.into_iter().map(|op| (key, op)).collect();
+                        ops.into_iter().map(|op| (key.clone(), op)).collect();
                     ops
                 })
                 .collect(),
@@ -158,14 +159,14 @@ impl Context {
             Box::new(
                 move |ctx: &mut Context,
                       meta: EditorMeta,
-                      mut results: Vec<(LanguageId, R::Result)>| {
+                      results: Vec<(LanguageId, R::Result)>| {
                     callback(ctx, meta, results)
                 },
             ),
         );
     }
 
-    pub fn batch_call<
+    fn batch_call<
         R: Request,
         F: for<'a> FnOnce(&'a mut Context, EditorMeta, Vec<(LanguageId, R::Result)>) -> () + 'static,
     >(
@@ -216,9 +217,8 @@ impl Context {
             self.response_waitlist
                 .insert(id.clone(), (meta.clone(), R::METHOD, batch_id, false));
 
-            let srv_settings = &self.language_servers[&language_id];
             add_outstanding_request(
-                (&language_id, srv_settings),
+                &language_id,
                 self,
                 R::METHOD,
                 meta.buffile.clone(),
@@ -232,7 +232,8 @@ impl Context {
                 method: R::METHOD.into(),
                 params: params.unwrap(),
             };
-            if srv_settings
+            let server = &self.language_servers[&language_id];
+            if server
                 .tx
                 .send(ServerMessage::Request(Call::MethodCall(call)))
                 .is_err()
@@ -242,7 +243,7 @@ impl Context {
         }
     }
 
-    pub fn cancel(&mut self, srv: (&LanguageId, &ServerSettings), id: Id) {
+    pub fn cancel(&mut self, language_id: &LanguageId, id: Id) {
         match self.response_waitlist.get_mut(&id) {
             Some((_meta, method, _batch_id, canceled)) => {
                 debug!("Canceling request {id:?} ({method})");
@@ -257,20 +258,14 @@ impl Context {
             _ => panic!("expected numeric ID"),
         };
         self.notify::<Cancel>(
-            srv,
+            language_id,
             CancelParams {
                 id: NumberOrString::Number(id.try_into().unwrap()),
             },
         );
     }
 
-    pub fn reply(
-        &mut self,
-        srv: (&LanguageId, &ServerSettings),
-        id: Id,
-        result: Result<Value, Error>,
-    ) {
-        let (language_id, srv_settings) = srv;
+    pub fn reply(&mut self, language_id: &LanguageId, id: Id, result: Result<Value, Error>) {
         let output = match result {
             Ok(result) => Output::Success(Success {
                 jsonrpc: Some(Version::V2),
@@ -283,23 +278,16 @@ impl Context {
                 error,
             }),
         };
-        if srv_settings
-            .tx
-            .send(ServerMessage::Response(output))
-            .is_err()
-        {
+        let server = &self.language_servers[language_id];
+        if server.tx.send(ServerMessage::Response(output)).is_err() {
             error!("Failed to reply to language server {language_id}");
         };
     }
 
-    pub fn notify<N: Notification>(
-        &mut self,
-        srv: (&LanguageId, &ServerSettings),
-        params: N::Params,
-    ) where
+    pub fn notify<N: Notification>(&mut self, language_id: &LanguageId, params: N::Params)
+    where
         N::Params: IntoParams,
     {
-        let (language_id, srv_settings) = srv;
         let params = params.into_params();
         if params.is_err() {
             error!("Failed to convert params");
@@ -310,7 +298,8 @@ impl Context {
             method: N::METHOD.into(),
             params: params.unwrap(),
         };
-        if srv_settings
+        let server = &self.language_servers[language_id];
+        if server
             .tx
             .send(ServerMessage::Request(Call::Notification(notification)))
             .is_err()
@@ -344,8 +333,8 @@ impl Context {
     }
 
     fn next_batch_id(&mut self) -> BatchNumber {
-        let id = self.batch_counter;
-        self.batch_counter += 1;
+        let id = self.batch_count;
+        self.batch_count += 1;
         id
     }
 
@@ -392,7 +381,7 @@ pub fn meta_for_session(session: String, client: Option<String>) -> EditorMeta {
 }
 
 fn add_outstanding_request(
-    srv: (&LanguageId, &ServerSettings),
+    language_id: &LanguageId,
     ctx: &mut Context,
     method: &'static str,
     buffile: String,
@@ -420,7 +409,7 @@ fn add_outstanding_request(
         }
     };
     if let Some(id) = to_cancel {
-        ctx.cancel(srv, id);
+        ctx.cancel(language_id, id);
     }
 }
 

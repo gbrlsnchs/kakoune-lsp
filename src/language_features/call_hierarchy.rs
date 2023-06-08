@@ -109,17 +109,18 @@ fn request_call_hierarchy(
 }
 
 fn format_location(
+    language_id: &LanguageId,
     meta: &EditorMeta,
     ctx: &mut Context,
-    srv_settings: &ServerSettings,
     uri: &Url,
     position: Position,
     prefix: &str,
     suffix: &str,
 ) -> String {
+    let server = &ctx.language_servers[language_id];
     let filename = uri.to_file_path().unwrap();
-    let filename = short_file_path(filename.to_str().unwrap(), &srv_settings.root_path);
-    let position = get_kakoune_position_with_fallback(srv_settings, &meta.buffile, position, ctx);
+    let filename = short_file_path(filename.to_str().unwrap(), &server.root_path);
+    let position = get_kakoune_position_with_fallback(server, &meta.buffile, position, ctx);
     format!(
         "{}{}:{}:{}: {}\n",
         prefix, filename, position.line, position.column, suffix,
@@ -164,7 +165,6 @@ fn format_call_hierarchy_calls<'a>(
     result: &'a (LanguageId, Option<Vec<impl CallHierarchyCall<'a>>>),
 ) {
     let (language_id, result) = result;
-    let srv_settings = &ctx.language_servers[language_id];
     let result = match result {
         Some(result) => result,
         None => return,
@@ -181,9 +181,9 @@ fn format_call_hierarchy_calls<'a>(
     );
 
     let contents = format_location(
+        language_id,
         &meta,
         ctx,
-        srv_settings,
         &item.uri,
         item.range.start,
         "",
@@ -196,9 +196,9 @@ fn format_call_hierarchy_calls<'a>(
             let caller_or_calle = call.caller_or_callee();
 
             format_location(
+                language_id,
                 &meta,
                 ctx,
-                srv_settings,
                 &caller_or_calle.uri,
                 caller_or_calle.range.start,
                 "  ",
@@ -215,9 +215,9 @@ fn format_call_hierarchy_calls<'a>(
                         .or_else(|| line.strip_suffix('\n'))
                         .unwrap_or(&line);
                     format_location(
+                        language_id,
                         &meta,
                         ctx,
-                        srv_settings,
                         &caller.uri,
                         range.start,
                         "    ",
@@ -233,10 +233,11 @@ fn format_call_hierarchy_calls<'a>(
     } else {
         "lsp-show-outgoing-calls"
     };
+    let server = &ctx.language_servers[language_id];
     let command = format!(
         "{} {} {}",
         command,
-        editor_quote(&srv_settings.root_path),
+        editor_quote(&server.root_path),
         editor_quote(&contents),
     );
     ctx.exec(meta, command);

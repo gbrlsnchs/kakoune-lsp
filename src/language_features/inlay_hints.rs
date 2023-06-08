@@ -56,7 +56,7 @@ pub fn inlay_hints(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
                     let v: Vec<_> = v
                         .unwrap_or_default()
                         .into_iter()
-                        .map(|v| (language_id, v))
+                        .map(|v| (language_id.clone(), v))
                         .collect();
                     v
                 })

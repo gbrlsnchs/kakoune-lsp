@@ -66,7 +66,7 @@ fn editor_completion(
                 None => vec![],
             };
 
-            items.into_iter().map(|v| (language_id, v))
+            items.into_iter().map(move |v| (language_id.clone(), v))
         })
         .collect();
 
@@ -96,8 +96,8 @@ fn editor_completion(
         .iter()
         .enumerate()
         .map(|(completion_item_index, (language_id, x))| {
-            let srv_settings = ctx.language_servers[language_id];
-            let maybe_resolve = if srv_settings
+            let server = &ctx.language_servers[language_id];
+            let maybe_resolve = if server
                 .capabilities
                 .as_ref()
                 .and_then(|caps| caps.completion_provider.as_ref())
@@ -142,7 +142,7 @@ fn editor_completion(
                         let range = lsp_range_to_kakoune(
                             &text_edit.range,
                             &document.text,
-                            srv_settings.offset_encoding,
+                            server.offset_encoding,
                         );
 
                         if can_infer_offset {
@@ -344,13 +344,12 @@ pub fn completion_item_resolve(meta: EditorMeta, params: EditorParams, ctx: &mut
             .drain(..)
             .nth(completion_item_index as usize)
             .unwrap();
-        let srv_settings = &ctx.language_servers[&language_id];
 
         match item.additional_text_edits {
             Some(edits) if !edits.is_empty() => {
                 // Not sure if this case ever happens, the spec is unclear.
                 let uri = Url::from_file_path(&meta.buffile).unwrap();
-                apply_text_edits(&meta, srv_settings, uri, edits, ctx);
+                apply_text_edits(&language_id, &meta, uri, edits, ctx);
                 return;
             }
             _ => (),
@@ -365,14 +364,12 @@ pub fn completion_item_resolve(meta: EditorMeta, params: EditorParams, ctx: &mut
     ctx.call::<ResolveCompletionItem, _>(
         meta,
         RequestParams::Each(req_params),
-        move |tx: &mut Context, meta, results| {
-            if let Some((language_id, new_item)) = results.first() {
-                let srv_settings = &ctx.language_servers[language_id];
-
+        move |ctx, meta, results| {
+            if let Some((language_id, new_item)) = results.into_iter().nth(0) {
                 editor_completion_item_resolve(
-                    tx,
+                    &language_id,
+                    ctx,
                     meta,
-                    srv_settings,
                     pager_active,
                     detail,
                     documentation,
@@ -384,13 +381,13 @@ pub fn completion_item_resolve(meta: EditorMeta, params: EditorParams, ctx: &mut
 }
 
 fn editor_completion_item_resolve(
+    language_id: &LanguageId,
     ctx: &mut Context,
     meta: EditorMeta,
-    srv_settings: &ServerSettings,
     pager_active: bool,
     old_detail: Option<String>,
     old_documentation: Option<Documentation>,
-    new_item: &CompletionItem,
+    new_item: CompletionItem,
 ) {
     if pager_active {
         if new_item.detail == old_detail || new_item.documentation == old_documentation {
@@ -400,11 +397,11 @@ fn editor_completion_item_resolve(
             meta,
             format!(
                 "info -markup -style menu -- %§{}§",
-                completion_menu_text(new_item).replace('§', "§§")
+                completion_menu_text(&new_item).replace('§', "§§")
             ),
         );
     } else if let Some(resolved_edits) = new_item.additional_text_edits {
         let uri = Url::from_file_path(&meta.buffile).unwrap();
-        apply_text_edits(&meta, srv_settings, uri, resolved_edits, ctx)
+        apply_text_edits(language_id, &meta, uri, resolved_edits.clone(), ctx)
     }
 }

@@ -14,7 +14,7 @@ use url::Url;
 
 // Navigate
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct NavigateParams {
     pub text_document: TextDocumentIdentifier,
@@ -38,9 +38,10 @@ impl Request for NavigateRequest {
 
 pub fn navigate(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
     let params = KakouneNavigateParams::deserialize(params).unwrap();
-    let (language_id, srv_settings) = meta
+    let (language_id, server) = meta
         .language
-        .and_then(|id| ctx.language_servers.get_key_value(&id))
+        .as_ref()
+        .and_then(|id| ctx.language_servers.get_key_value(id))
         .or_else(|| ctx.language_servers.first_key_value())
         .unwrap();
     let mut req_params = HashMap::new();
@@ -50,7 +51,7 @@ pub fn navigate(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
             text_document: TextDocumentIdentifier {
                 uri: Url::from_file_path(&meta.buffile).unwrap(),
             },
-            position: get_lsp_position(srv_settings, &meta.buffile, &params.position, ctx).unwrap(),
+            position: get_lsp_position(server, &meta.buffile, &params.position, ctx).unwrap(),
             direction: params.direction,
         }],
     );
@@ -70,7 +71,7 @@ pub fn navigate(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
 
 // $ccls/vars
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct VarsParams {
     pub text_document: TextDocumentIdentifier,
@@ -89,7 +90,8 @@ pub fn vars(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
     let params = PositionParams::deserialize(params).unwrap();
     let (language_id, srv_settings) = meta
         .language
-        .and_then(|id| ctx.language_servers.get_key_value(&id))
+        .as_ref()
+        .and_then(|id| ctx.language_servers.get_key_value(id))
         .or_else(|| ctx.language_servers.first_key_value())
         .unwrap();
     let mut req_params = HashMap::new();
@@ -119,7 +121,7 @@ pub fn vars(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
 
 // $ccls/inheritance
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct InheritanceParams {
     pub text_document: TextDocumentIdentifier,
@@ -147,7 +149,8 @@ pub fn inheritance(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
     let params = KakouneInheritanceParams::deserialize(params).unwrap();
     let (language_id, srv_settings) = meta
         .language
-        .and_then(|id| ctx.language_servers.get_key_value(&id))
+        .as_ref()
+        .and_then(|id| ctx.language_servers.get_key_value(id))
         .or_else(|| ctx.language_servers.first_key_value())
         .unwrap();
     let mut req_params = HashMap::new();
@@ -179,7 +182,7 @@ pub fn inheritance(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
 
 // $ccls/call
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct CallParams {
     pub text_document: TextDocumentIdentifier,
@@ -205,7 +208,8 @@ pub fn call(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
     let params = KakouneCallParams::deserialize(params).unwrap();
     let (language_id, srv_settings) = meta
         .language
-        .and_then(|id| ctx.language_servers.get_key_value(&id))
+        .as_ref()
+        .and_then(|id| ctx.language_servers.get_key_value(id))
         .or_else(|| ctx.language_servers.first_key_value())
         .unwrap();
     let mut req_params = HashMap::new();
@@ -236,7 +240,7 @@ pub fn call(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
 
 // $ccls/member
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct MemberParams {
     pub text_document: TextDocumentIdentifier,
@@ -262,7 +266,8 @@ pub fn member(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
     let params = KakouneMemberParams::deserialize(params).unwrap();
     let (language_id, srv_settings) = meta
         .language
-        .and_then(|id| ctx.language_servers.get_key_value(&id))
+        .as_ref()
+        .and_then(|id| ctx.language_servers.get_key_value(id))
         .or_else(|| ctx.language_servers.first_key_value())
         .unwrap();
     let mut req_params = HashMap::new();
@@ -455,7 +460,8 @@ pub fn publish_semantic_highlighting(params: Params, ctx: &mut Context) {
     };
     let (_, srv_settings) = meta
         .language
-        .and_then(|id| ctx.language_servers.get_key_value(&id))
+        .as_ref()
+        .and_then(|id| ctx.language_servers.get_key_value(id))
         .or_else(|| ctx.language_servers.first_key_value())
         .unwrap();
     let ranges = params

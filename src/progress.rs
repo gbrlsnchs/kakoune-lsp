@@ -1,4 +1,4 @@
-use crate::context::{Context, ServerSettings};
+use crate::context::Context;
 use crate::types::{EditorMeta, EditorParams, LanguageId};
 use crate::util::editor_quote;
 use crate::wcwidth;
@@ -15,13 +15,13 @@ use std::collections::hash_map;
 use std::time::{self, Duration};
 
 pub fn work_done_progress_cancel(
-    srv: (&LanguageId, &ServerSettings),
+    language_id: &LanguageId,
     _meta: EditorMeta,
     params: EditorParams,
     ctx: &mut Context,
 ) {
     let params = WorkDoneProgressCancelParams::deserialize(params).expect("Failed to parse params");
-    ctx.notify::<WorkDoneProgressCancel>(srv, params);
+    ctx.notify::<WorkDoneProgressCancel>(language_id, params);
 }
 
 pub fn work_done_progress_create(

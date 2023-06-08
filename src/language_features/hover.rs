@@ -204,7 +204,7 @@ pub fn editor_hover(
 
     let info: Vec<_> = results
         .into_iter()
-        .map(|(language_id, hover)| {
+        .map(|(_, hover)| {
             let (is_markdown, mut contents) = match hover {
                 None => (false, "".to_string()),
                 Some(hover) => match hover.contents {

@@ -155,12 +155,7 @@ pub struct PublishSemanticHighlightingParams {
     pub symbols: Vec<SemanticSymbol>,
 }
 
-pub fn publish_semantic_highlighting(
-    params: Params,
-    srv: (&LanguageId, &ServerSettings),
-    ctx: &mut Context,
-) {
-    let (language_id, srv_settings) = srv;
+pub fn publish_semantic_highlighting(language_id: &LanguageId, params: Params, ctx: &mut Context) {
     let params: PublishSemanticHighlightingParams =
         params.parse().expect("Failed to parse semhl params");
     let client = None;
@@ -177,7 +172,8 @@ pub fn publish_semantic_highlighting(
         .iter()
         .flat_map(|x| {
             let face = x.get_face();
-            let offset_encoding = srv_settings.offset_encoding;
+            let server = &ctx.language_servers[language_id];
+            let offset_encoding = server.offset_encoding;
             x.ranges.iter().filter_map(move |r| {
                 if face.is_empty() {
                     warn!("No face found for {:?}", x);

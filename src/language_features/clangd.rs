@@ -15,9 +15,10 @@ impl Request for SwitchSourceHeaderRequest {
 }
 
 pub fn switch_source_header(meta: EditorMeta, ctx: &mut Context) {
-    let (language_id, srv_settings) = meta
+    let (language_id, _) = meta
         .language
-        .and_then(|id| ctx.language_servers.get_key_value(&id))
+        .as_ref()
+        .and_then(|id| ctx.language_servers.get_key_value(id))
         .or_else(|| ctx.language_servers.first_key_value())
         .unwrap();
     let mut req_params = HashMap::new();

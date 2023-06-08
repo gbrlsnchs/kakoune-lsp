@@ -65,7 +65,8 @@ fn code_actions_for_range(
 ) {
     let buff_diags = ctx.diagnostics.get(&meta.buffile);
 
-    let diagnostics: HashMap<LanguageId, Vec<Diagnostic>> = if let Some(buff_diags) = buff_diags {
+    let mut diagnostics: HashMap<LanguageId, Vec<Diagnostic>> = if let Some(buff_diags) = buff_diags
+    {
         buff_diags
             .iter()
             .filter(|(language_id, d)| ranges_overlap(d.range, ranges[language_id]))
@@ -80,17 +81,17 @@ fn code_actions_for_range(
     };
 
     let req_params = ranges
-        .into_iter()
+        .iter()
         .map(|(language_id, range)| {
             (
-                language_id,
+                language_id.clone(),
                 vec![CodeActionParams {
                     text_document: TextDocumentIdentifier {
                         uri: Url::from_file_path(&meta.buffile).unwrap(),
                     },
-                    range,
+                    range: range.clone(),
                     context: CodeActionContext {
-                        diagnostics: diagnostics.remove(&language_id).unwrap_or_default(),
+                        diagnostics: diagnostics.remove(language_id).unwrap_or_default(),
                         only: None,
                         trigger_kind: Some(if meta.hook {
                             CodeActionTriggerKind::AUTOMATIC
@@ -107,9 +108,7 @@ fn code_actions_for_range(
     ctx.call::<CodeActionRequest, _>(
         meta,
         RequestParams::Each(req_params),
-        move |ctx: &mut Context, meta, results| {
-            editor_code_actions(meta, results, ctx, params, ranges)
-        },
+        move |ctx, meta, results| editor_code_actions(meta, results, ctx, params, ranges),
     );
 }
 
@@ -151,7 +150,7 @@ fn editor_code_actions(
             let cmd: Vec<_> = cmd
                 .unwrap_or_default()
                 .into_iter()
-                .map(|cmd| (language_id, cmd))
+                .map(|cmd| (language_id.clone(), cmd))
                 .collect();
             cmd
         })

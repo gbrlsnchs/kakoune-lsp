@@ -17,19 +17,17 @@ use serde::Deserialize;
 use url::Url;
 
 pub fn text_document_did_open(
-    srv: (&LanguageId, &ServerSettings),
+    language_id: &LanguageId,
     meta: EditorMeta,
     params: EditorParams,
     ctx: &mut Context,
 ) {
     let params = TextDocumentDidOpenParams::deserialize(params)
         .expect("Params should follow TextDocumentDidOpenParams structure");
-    let (language_id, srv_settings) = srv;
-    let language_id = language_id.clone();
     let params = DidOpenTextDocumentParams {
         text_document: TextDocumentItem {
             uri: Url::from_file_path(&meta.buffile).unwrap(),
-            language_id,
+            language_id: language_id.clone(),
             version: meta.version,
             text: params.draft,
         },
@@ -39,12 +37,12 @@ pub fn text_document_did_open(
         text: Rope::from_str(&params.text_document.text),
     };
     ctx.documents.insert(meta.buffile.clone(), document);
-    ctx.notify::<DidOpenTextDocument>(srv, params);
+    ctx.notify::<DidOpenTextDocument>(language_id, params);
     text_document_code_lens(meta, ctx);
 }
 
 pub fn text_document_did_change(
-    srv: (&LanguageId, &ServerSettings),
+    language_id: &LanguageId,
     meta: EditorMeta,
     params: EditorParams,
     ctx: &mut Context,
@@ -53,7 +51,6 @@ pub fn text_document_did_change(
         .expect("Params should follow TextDocumentDidChangeParams structure");
     let uri = Url::from_file_path(&meta.buffile).unwrap();
     let version = meta.version;
-    let (language_id, srv_settings) = srv;
     let old_version = ctx
         .documents
         .get(&meta.buffile)
@@ -79,35 +76,22 @@ pub fn text_document_did_change(
             text: params.draft,
         }],
     };
-    ctx.notify::<DidChangeTextDocument>(srv, req_params);
+    ctx.notify::<DidChangeTextDocument>(language_id, req_params);
     text_document_code_lens(meta, ctx);
 }
 
-pub fn text_document_did_close(
-    srv: (&LanguageId, &ServerSettings),
-    meta: EditorMeta,
-    ctx: &mut Context,
-) {
+pub fn text_document_did_close(language_id: &LanguageId, meta: EditorMeta, ctx: &mut Context) {
     ctx.documents.remove(&meta.buffile);
     let uri = Url::from_file_path(&meta.buffile).unwrap();
     let params = DidCloseTextDocumentParams {
         text_document: TextDocumentIdentifier { uri },
     };
-    ctx.notify::<DidCloseTextDocument>(srv, params);
+    ctx.notify::<DidCloseTextDocument>(language_id, params);
 }
 
-pub fn text_document_did_save(
-    srv: (&LanguageId, &ServerSettings),
-    meta: EditorMeta,
-    ctx: &mut Context,
-) {
-    let (_, srv_settings) = srv;
-    let text = match srv_settings
-        .capabilities
-        .as_ref()
-        .unwrap()
-        .text_document_sync
-    {
+pub fn text_document_did_save(language_id: &LanguageId, meta: EditorMeta, ctx: &mut Context) {
+    let server = &ctx.language_servers[language_id];
+    let text = match server.capabilities.as_ref().unwrap().text_document_sync {
         Some(TextDocumentSyncCapability::Options(TextDocumentSyncOptions {
             save:
                 Some(TextDocumentSyncSaveOptions::SaveOptions(SaveOptions {
@@ -126,7 +110,7 @@ pub fn text_document_did_save(
         text_document: TextDocumentIdentifier { uri },
         text,
     };
-    ctx.notify::<DidSaveTextDocument>(srv, params);
+    ctx.notify::<DidSaveTextDocument>(language_id, params);
 }
 
 pub fn spawn_file_watcher(
@@ -218,12 +202,12 @@ fn event_file_changes(
 }
 
 pub fn workspace_did_change_watched_files(
-    srv: (&LanguageId, &ServerSettings),
+    language_id: &LanguageId,
     changes: Vec<FileEvent>,
     ctx: &mut Context,
 ) {
     let params = DidChangeWatchedFilesParams { changes };
-    ctx.notify::<DidChangeWatchedFiles>(srv, params);
+    ctx.notify::<DidChangeWatchedFiles>(language_id, params);
 }
 
 #[derive(Clone)]
@@ -233,7 +217,7 @@ pub struct CompiledFileSystemWatcher {
 }
 
 pub fn register_workspace_did_change_watched_files(
-    srv: (&LanguageId, &ServerSettings),
+    language_id: &LanguageId,
     options: Option<Value>,
     ctx: &mut Context,
 ) {
@@ -278,7 +262,6 @@ pub fn register_workspace_did_change_watched_files(
                 continue;
             }
         };
-        let (language_id, _) = srv;
         let default_watch_kind = WatchKind::Create | WatchKind::Change | WatchKind::Delete;
         let kind = watcher.kind.unwrap_or(default_watch_kind);
         ctx.pending_file_watchers
