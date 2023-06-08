@@ -8,7 +8,7 @@ use lsp_types::*;
 use serde::Deserialize;
 use std::borrow::Cow;
 use std::collections::hash_map::Entry;
-use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::convert::TryInto;
 use std::path::PathBuf;
 use std::{fs, time};
@@ -216,8 +216,9 @@ impl Context {
             self.response_waitlist
                 .insert(id.clone(), (meta.clone(), R::METHOD, batch_id, false));
 
-            let srv = &self.language_servers[&language_id];
+            let srv_settings = &self.language_servers[&language_id];
             add_outstanding_request(
+                (&language_id, srv_settings),
                 self,
                 R::METHOD,
                 meta.buffile.clone(),
@@ -231,7 +232,7 @@ impl Context {
                 method: R::METHOD.into(),
                 params: params.unwrap(),
             };
-            if srv
+            if srv_settings
                 .tx
                 .send(ServerMessage::Request(Call::MethodCall(call)))
                 .is_err()
@@ -241,7 +242,7 @@ impl Context {
         }
     }
 
-    pub fn cancel(&mut self, id: Id) {
+    pub fn cancel(&mut self, srv: (&LanguageId, &ServerSettings), id: Id) {
         match self.response_waitlist.get_mut(&id) {
             Some((_meta, method, _batch_id, canceled)) => {
                 debug!("Canceling request {id:?} ({method})");
@@ -255,9 +256,12 @@ impl Context {
             Id::Num(id) => id,
             _ => panic!("expected numeric ID"),
         };
-        self.notify::<Cancel>(CancelParams {
-            id: NumberOrString::Number(id.try_into().unwrap()),
-        });
+        self.notify::<Cancel>(
+            srv,
+            CancelParams {
+                id: NumberOrString::Number(id.try_into().unwrap()),
+            },
+        );
     }
 
     pub fn reply(
@@ -383,10 +387,12 @@ pub fn meta_for_session(session: String, client: Option<String>) -> EditorMeta {
         command_fifo: None,
         write_response_to_fifo: false,
         hook: false,
+        language: None,
     }
 }
 
 fn add_outstanding_request(
+    srv: (&LanguageId, &ServerSettings),
     ctx: &mut Context,
     method: &'static str,
     buffile: String,
@@ -414,7 +420,7 @@ fn add_outstanding_request(
         }
     };
     if let Some(id) = to_cancel {
-        ctx.cancel(id);
+        ctx.cancel(srv, id);
     }
 }
 
