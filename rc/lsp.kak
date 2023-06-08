@@ -1436,6 +1436,7 @@ column   = ${kak_cursor_column}
 
 # clangd Extensions
 
+declare-option str lsp_clangd_language
 define-command clangd-switch-source-header -docstring "clangd-switch-source-header: Switch source/header." %{
     nop %sh{ (printf %s "
 session  = \"${kak_session}\"
@@ -1444,6 +1445,7 @@ buffile  = \"${kak_buffile}\"
 filetype = \"${kak_opt_filetype}\"
 version  = ${kak_timestamp:-0}
 method   = \"textDocument/switchSourceHeader\"
+$([ -z ${kak_opt_lsp_clangd_language} ] || echo language = \"${kak_opt_lsp_clangd_language}\")
 $([ -z ${kak_hook_param+x} ] || echo hook = true)
 [params]
 " | eval "${kak_opt_lsp_cmd} --request") > /dev/null 2>&1 < /dev/null & }
