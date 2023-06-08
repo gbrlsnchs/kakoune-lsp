@@ -8,6 +8,7 @@ use itertools::Itertools;
 use lsp_types::notification::*;
 use lsp_types::request::*;
 use lsp_types::*;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::process;
@@ -580,80 +581,110 @@ pub fn server_has_capability(srv: (&LanguageId, &ServerSettings), feature: &'sta
 }
 
 pub fn capabilities(meta: EditorMeta, ctx: &mut Context) {
-    let mut features: Vec<String> = vec![];
+    let mut features: BTreeMap<&str, Vec<&LanguageId>> = BTreeMap::new();
 
-    fn probe_feature(ctx: &mut Context, features: &mut Vec<String>, feature: &'static str) {
-        if server_has_capability(ctx, feature) {
-            features.push(feature.to_string());
+    fn probe_feature(
+        srv: (&LanguageId, &ServerSettings),
+        features: &BTreeMap<&str, Vec<&LanguageId>>,
+        feature: &'static str,
+    ) {
+        if server_has_capability(srv, feature) {
+            let (language_id, _) = srv;
+            features.entry(feature).or_default().push(language_id);
         }
     }
 
-    probe_feature(ctx, &mut features, CAPABILITY_SELECTION_RANGE);
-    probe_feature(ctx, &mut features, CAPABILITY_HOVER);
-    probe_feature(ctx, &mut features, CAPABILITY_COMPLETION);
-    probe_feature(ctx, &mut features, CAPABILITY_SIGNATURE_HELP);
-    probe_feature(ctx, &mut features, CAPABILITY_DEFINITION);
-    probe_feature(ctx, &mut features, CAPABILITY_TYPE_DEFINITION);
-    probe_feature(ctx, &mut features, CAPABILITY_IMPLEMENTATION);
-    probe_feature(ctx, &mut features, CAPABILITY_REFERENCES);
-    probe_feature(ctx, &mut features, CAPABILITY_DOCUMENT_HIGHLIGHT);
-    if server_has_capability(ctx, CAPABILITY_DOCUMENT_SYMBOL) {
-        features.push("lsp-document-symbol, lsp-object, lsp-goto-document-symbol".to_string());
-    }
-    probe_feature(ctx, &mut features, CAPABILITY_WORKSPACE_SYMBOL);
-    probe_feature(ctx, &mut features, CAPABILITY_FORMATTING);
-    probe_feature(ctx, &mut features, CAPABILITY_RANGE_FORMATTING);
-    probe_feature(ctx, &mut features, CAPABILITY_RENAME);
-    probe_feature(ctx, &mut features, CAPABILITY_CODE_ACTIONS);
-    probe_feature(ctx, &mut features, CAPABILITY_CODE_ACTIONS_RESOLVE);
-    probe_feature(ctx, &mut features, CAPABILITY_CODE_LENS);
-    probe_feature(ctx, &mut features, CAPABILITY_CALL_HIERARCHY);
-    features.push("lsp-diagnostics".to_string());
-    probe_feature(ctx, &mut features, CAPABILITY_INLAY_HINTS);
+    for srv in &ctx.language_servers {
+        let (language_id, srv_settings) = srv;
 
-    // NOTE controller should park request for capabilities until they are available thus it should
-    // be safe to unwrap here (otherwise something unexpectedly wrong and it's better to panic)
-    let server_capabilities = ctx.capabilities.as_ref().unwrap();
+        probe_feature(srv, &features, CAPABILITY_SELECTION_RANGE);
+        probe_feature(srv, &features, CAPABILITY_HOVER);
+        probe_feature(srv, &features, CAPABILITY_COMPLETION);
+        probe_feature(srv, &features, CAPABILITY_SIGNATURE_HELP);
+        probe_feature(srv, &features, CAPABILITY_DEFINITION);
+        probe_feature(srv, &features, CAPABILITY_TYPE_DEFINITION);
+        probe_feature(srv, &features, CAPABILITY_IMPLEMENTATION);
+        probe_feature(srv, &features, CAPABILITY_REFERENCES);
+        probe_feature(srv, &features, CAPABILITY_DOCUMENT_HIGHLIGHT);
+        if server_has_capability(srv, CAPABILITY_DOCUMENT_SYMBOL) {
+            features
+                .entry("lsp-document-symbol, lsp-object, lsp-goto-document-symbol")
+                .or_default()
+                .push(language_id);
+        }
+        probe_feature(srv, &features, CAPABILITY_WORKSPACE_SYMBOL);
+        probe_feature(srv, &features, CAPABILITY_FORMATTING);
+        probe_feature(srv, &features, CAPABILITY_RANGE_FORMATTING);
+        probe_feature(srv, &features, CAPABILITY_RENAME);
+        probe_feature(srv, &features, CAPABILITY_CODE_ACTIONS);
+        probe_feature(srv, &features, CAPABILITY_CODE_ACTIONS_RESOLVE);
+        probe_feature(srv, &features, CAPABILITY_CODE_LENS);
+        probe_feature(srv, &features, CAPABILITY_CALL_HIERARCHY);
+        features
+            .entry("lsp-diagnostics")
+            .or_default()
+            .push(language_id);
+        probe_feature(srv, &features, CAPABILITY_INLAY_HINTS);
 
-    if let Some(ref provider) = server_capabilities.execute_command_provider {
-        features.push(format!(
-            "lsp-execute-command:  commands: [{}]",
-            provider.commands.iter().join(", ")
-        ))
-    }
+        // NOTE controller should park request for capabilities until they are available thus it should
+        // be safe to unwrap here (otherwise something unexpectedly wrong and it's better to panic)
+        let server_capabilities = srv_settings.capabilities.as_ref().unwrap();
 
-    if let Some(ref provider) = server_capabilities.semantic_tokens_provider {
-        let legend = match provider {
-            SemanticTokensServerCapabilities::SemanticTokensOptions(options) => &options.legend,
-            SemanticTokensServerCapabilities::SemanticTokensRegistrationOptions(regopts) => {
-                &regopts.semantic_tokens_options.legend
-            }
-        };
+        if let Some(ref provider) = server_capabilities.execute_command_provider {
+            features
+                .entry(&format!(
+                    "lsp-execute-command: commands: [{}]",
+                    provider.commands.iter().join(", ")
+                ))
+                .or_default()
+                .push(language_id);
+        }
 
-        features.push(format!(
-            "lsp-semantic-tokens:     types: [{}]",
-            legend
-                .token_types
-                .iter()
-                .map(SemanticTokenType::as_str)
-                .join(", ")
-        ));
-        features.push(format!(
-            "lsp-semantic-tokens: modifiers: [{}]",
-            legend
-                .token_modifiers
-                .iter()
-                .map(SemanticTokenModifier::as_str)
-                .join(", ")
-        ));
+        if let Some(ref provider) = server_capabilities.semantic_tokens_provider {
+            let legend = match provider {
+                SemanticTokensServerCapabilities::SemanticTokensOptions(options) => &options.legend,
+                SemanticTokensServerCapabilities::SemanticTokensRegistrationOptions(regopts) => {
+                    &regopts.semantic_tokens_options.legend
+                }
+            };
+
+            features
+                .entry(&format!(
+                    "lsp-semantic-tokens: types: [{}]",
+                    legend
+                        .token_types
+                        .iter()
+                        .map(SemanticTokenType::as_str)
+                        .join(", ")
+                ))
+                .or_default()
+                .push(language_id);
+            features
+                .entry(&format!(
+                    "lsp-semantic-tokens: modifiers: [{}]",
+                    legend
+                        .token_modifiers
+                        .iter()
+                        .map(SemanticTokenModifier::as_str)
+                        .join(", ")
+                ))
+                .or_default()
+                .push(language_id);
+        }
     }
 
     let command = formatdoc!(
-        "info 'kak-lsp commands supported by {} language server:
+        "info 'kak-lsp commands supported by language servers:
 
          {}'",
-        ctx.language_id,
-        editor_escape(&features.join("\n"))
+        editor_escape(
+            &features
+                .into_iter()
+                .map(|(feature, language_ids)| {
+                    format!("{} [{}]", feature, language_ids.iter().join(", "))
+                })
+                .join("\n")
+        )
     );
     ctx.exec(meta, command);
 }
