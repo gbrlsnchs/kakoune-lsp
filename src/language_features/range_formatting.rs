@@ -39,16 +39,18 @@ pub fn text_document_range_formatting(meta: EditorMeta, params: EditorParams, ct
 
 pub fn editor_range_formatting<T: TextEditish<T>>(
     meta: EditorMeta,
-    text_edits: Vec<T>,
+    result: (LanguageId, Vec<T>),
     ctx: &mut Context,
 ) {
+    let (language_id, text_edits) = result;
+    let srv_settings = &ctx.language_servers[&language_id];
     let cmd = ctx.documents.get(&meta.buffile).and_then(|document| {
         apply_text_edits_to_buffer(
             &meta.client,
             None,
             text_edits,
             &document.text,
-            ctx.offset_encoding,
+            srv_settings.offset_encoding,
             false,
         )
     });
