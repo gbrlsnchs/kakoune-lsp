@@ -192,20 +192,15 @@ impl Context {
             (
                 Vec::with_capacity(ops.len()),
                 Box::new(move |ctx, meta, vals| {
-                    let servers = HashSet::with_capacity(ctx.language_servers.len());
-
                     // Only get the last response of each server.
                     let results = vals
                         .into_iter()
-                        .rev()
                         .map(|(language_id, val)| {
                             (
                                 language_id,
                                 serde_json::from_value(val).expect("Failed to parse response"),
                             )
                         })
-                        .filter(|(language_id, _)| servers.insert(language_id))
-                        .rev() // preserve response order
                         .collect();
                     callback(ctx, meta, results)
                 }),
