@@ -498,37 +498,25 @@ fn dispatch_editor_request(request: EditorRequest, ctx: &mut Context) {
     // Clone all language servers to make borrow checker happy.
     let servers: Vec<_> = ctx.language_servers.keys().cloned().collect();
 
-    for language_id in &servers {
-        ensure_did_open(language_id, &request, ctx);
-    }
+    ensure_did_open(&request, ctx);
     let method: &str = &request.method;
     let meta = request.meta;
     let params = request.params;
     match method {
         notification::DidOpenTextDocument::METHOD => {
-            for language_id in &servers {
-                text_document_did_open(language_id, meta.clone(), params.clone(), ctx);
-            }
+            text_document_did_open(meta, params, ctx);
         }
         notification::DidChangeTextDocument::METHOD => {
-            for language_id in &servers {
-                text_document_did_change(language_id, meta.clone(), params.clone(), ctx);
-            }
+            text_document_did_change(meta, params, ctx);
         }
         notification::DidCloseTextDocument::METHOD => {
-            for language_id in &servers {
-                text_document_did_close(language_id, meta.clone(), ctx);
-            }
+            text_document_did_close(meta, ctx);
         }
         notification::DidSaveTextDocument::METHOD => {
-            for language_id in &servers {
-                text_document_did_save(language_id, meta.clone(), ctx);
-            }
+            text_document_did_save(meta, ctx);
         }
         notification::DidChangeConfiguration::METHOD => {
-            for language_id in &servers {
-                workspace::did_change_configuration(language_id, meta.clone(), params.clone(), ctx);
-            }
+            workspace::did_change_configuration(meta, params, ctx);
         }
         request::CallHierarchyPrepare::METHOD => {
             call_hierarchy::call_hierarchy_prepare(meta, params, ctx);
@@ -812,30 +800,20 @@ fn dispatch_server_notification(
 ///
 /// In a normal situation, such extra request is not required, and `ensure_did_open` short-circuits
 /// most of the time in `if buffile.is_empty() || ctx.documents.contains_key(buffile)` condition.
-fn ensure_did_open(language_id: &LanguageId, request: &EditorRequest, ctx: &mut Context) {
+fn ensure_did_open(request: &EditorRequest, ctx: &mut Context) {
     let buffile = &request.meta.buffile;
     if buffile.is_empty() || ctx.documents.contains_key(buffile) {
         return;
     };
     if request.method == notification::DidChangeTextDocument::METHOD {
-        text_document_did_open(
-            language_id,
-            request.meta.clone(),
-            request.params.clone(),
-            ctx,
-        );
+        text_document_did_open(request.meta.clone(), request.params.clone(), ctx);
         return;
     }
     match read_document(buffile) {
         Ok(draft) => {
             let mut params = toml::value::Table::default();
             params.insert("draft".to_string(), toml::Value::String(draft));
-            text_document_did_open(
-                language_id,
-                request.meta.clone(),
-                toml::Value::Table(params),
-                ctx,
-            );
+            text_document_did_open(request.meta.clone(), toml::Value::Table(params), ctx);
         }
         Err(err) => error!(
             "Failed to read file {} to simulate textDocument/didOpen: {}",

@@ -13,12 +13,7 @@ use serde_json::{self, Value};
 use std::fs;
 use std::io;
 
-pub fn did_change_configuration(
-    language_id: &LanguageId,
-    meta: EditorMeta,
-    mut params: EditorParams,
-    ctx: &mut Context,
-) {
+pub fn did_change_configuration(meta: EditorMeta, mut params: EditorParams, ctx: &mut Context) {
     let mut default_settings = toml::value::Table::new();
 
     let raw_settings = params
@@ -39,22 +34,25 @@ pub fn did_change_configuration(
 
     record_dynamic_config(&meta, ctx, config);
 
-    let settings = ctx
-        .dynamic_config
-        .language
-        .get(language_id)
-        .and_then(|lang| lang.settings.as_ref());
-    let settings = configured_section(ctx, language_id, settings).unwrap_or_else(|| {
-        if !raw_settings.is_empty() {
-            Value::Object(explode_string_table(raw_settings))
-        } else {
-            let language = ctx.config.language.get(language_id).unwrap();
-            configured_section(ctx, language_id, language.settings.as_ref()).unwrap_or_default()
-        }
-    });
+    let servers: Vec<_> = ctx.language_servers.keys().cloned().collect();
+    for language_id in &servers {
+        let settings = ctx
+            .dynamic_config
+            .language
+            .get(language_id)
+            .and_then(|lang| lang.settings.as_ref());
+        let settings = configured_section(ctx, language_id, settings).unwrap_or_else(|| {
+            if !raw_settings.is_empty() {
+                Value::Object(explode_string_table(raw_settings))
+            } else {
+                let language = ctx.config.language.get(language_id).unwrap();
+                configured_section(ctx, language_id, language.settings.as_ref()).unwrap_or_default()
+            }
+        });
 
-    let params = DidChangeConfigurationParams { settings };
-    ctx.notify::<DidChangeConfiguration>(language_id, params);
+        let params = DidChangeConfigurationParams { settings };
+        ctx.notify::<DidChangeConfiguration>(language_id, params);
+    }
 }
 
 pub fn configuration(

@@ -15,14 +15,17 @@ pub fn publish_diagnostics(language_id: &LanguageId, params: Params, ctx: &mut C
     let params: PublishDiagnosticsParams = params.parse().expect("Failed to parse params");
     let path = params.uri.to_file_path().unwrap();
     let buffile = path.to_str().unwrap();
-    ctx.diagnostics.insert(
-        buffile.to_string(),
-        params
-            .diagnostics
-            .into_iter()
-            .map(|d| (language_id.clone(), d))
-            .collect(),
-    );
+    ctx.diagnostics
+        .entry(buffile.to_string())
+        .or_default()
+        .extend({
+            let params: Vec<_> = params
+                .diagnostics
+                .into_iter()
+                .map(|d| (language_id.clone(), d))
+                .collect();
+            params
+        });
     let document = ctx.documents.get(buffile);
     if document.is_none() {
         return;

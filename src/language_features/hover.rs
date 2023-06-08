@@ -136,7 +136,7 @@ pub fn editor_hover(
                         .unwrap_or(FACE_INFO_DEFAULT);
 
                     format!(
-                        "• ({}) {{{}}}{}{{{}}}",
+                        "• [{}] {{{}}}{}{{{}}}",
                         language_id,
                         face,
                         escape_kakoune_markup(&message),

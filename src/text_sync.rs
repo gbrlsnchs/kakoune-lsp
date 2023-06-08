@@ -16,37 +16,31 @@ use ropey::Rope;
 use serde::Deserialize;
 use url::Url;
 
-pub fn text_document_did_open(
-    language_id: &LanguageId,
-    meta: EditorMeta,
-    params: EditorParams,
-    ctx: &mut Context,
-) {
+pub fn text_document_did_open(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
     let params = TextDocumentDidOpenParams::deserialize(params)
         .expect("Params should follow TextDocumentDidOpenParams structure");
-    let params = DidOpenTextDocumentParams {
-        text_document: TextDocumentItem {
-            uri: Url::from_file_path(&meta.buffile).unwrap(),
-            language_id: language_id.clone(),
-            version: meta.version,
-            text: params.draft,
-        },
-    };
     let document = Document {
         version: meta.version,
-        text: Rope::from_str(&params.text_document.text),
+        text: Rope::from_str(&params.draft),
     };
     ctx.documents.insert(meta.buffile.clone(), document);
-    ctx.notify::<DidOpenTextDocument>(language_id, params);
+
+    let servers: Vec<_> = ctx.language_servers.keys().cloned().collect();
+    for language_id in &servers {
+        let params = DidOpenTextDocumentParams {
+            text_document: TextDocumentItem {
+                uri: Url::from_file_path(&meta.buffile).unwrap(),
+                language_id: language_id.clone(),
+                version: meta.version,
+                text: params.draft.clone(),
+            },
+        };
+        ctx.notify::<DidOpenTextDocument>(language_id, params);
+    }
     text_document_code_lens(meta, ctx);
 }
 
-pub fn text_document_did_change(
-    language_id: &LanguageId,
-    meta: EditorMeta,
-    params: EditorParams,
-    ctx: &mut Context,
-) {
+pub fn text_document_did_change(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
     let params = TextDocumentDidChangeParams::deserialize(params)
         .expect("Params should follow TextDocumentDidChangeParams structure");
     let uri = Url::from_file_path(&meta.buffile).unwrap();
@@ -63,8 +57,11 @@ pub fn text_document_did_change(
         version,
         text: Rope::from_str(&params.draft),
     };
+
+    // Resets metadata for buffer.
     ctx.documents.insert(meta.buffile.clone(), document);
     ctx.diagnostics.insert(meta.buffile.clone(), Vec::new());
+
     let req_params = DidChangeTextDocumentParams {
         text_document: VersionedTextDocumentIdentifier {
             uri,
@@ -76,41 +73,50 @@ pub fn text_document_did_change(
             text: params.draft,
         }],
     };
-    ctx.notify::<DidChangeTextDocument>(language_id, req_params);
+    let servers: Vec<_> = ctx.language_servers.keys().cloned().collect();
+    for language_id in &servers {
+        ctx.notify::<DidChangeTextDocument>(language_id, req_params.clone());
+    }
     text_document_code_lens(meta, ctx);
 }
 
-pub fn text_document_did_close(language_id: &LanguageId, meta: EditorMeta, ctx: &mut Context) {
+pub fn text_document_did_close(meta: EditorMeta, ctx: &mut Context) {
     ctx.documents.remove(&meta.buffile);
     let uri = Url::from_file_path(&meta.buffile).unwrap();
     let params = DidCloseTextDocumentParams {
         text_document: TextDocumentIdentifier { uri },
     };
-    ctx.notify::<DidCloseTextDocument>(language_id, params);
+    let servers: Vec<_> = ctx.language_servers.keys().cloned().collect();
+    for language_id in &servers {
+        ctx.notify::<DidCloseTextDocument>(language_id, params.clone());
+    }
 }
 
-pub fn text_document_did_save(language_id: &LanguageId, meta: EditorMeta, ctx: &mut Context) {
-    let server = &ctx.language_servers[language_id];
-    let text = match server.capabilities.as_ref().unwrap().text_document_sync {
-        Some(TextDocumentSyncCapability::Options(TextDocumentSyncOptions {
-            save:
-                Some(TextDocumentSyncSaveOptions::SaveOptions(SaveOptions {
-                    include_text: Some(true),
-                })),
-            ..
-        })) => ctx
-            .documents
-            .get(&meta.buffile)
-            .map(|doc| doc.text.to_string()),
-        _ => None,
-    };
+pub fn text_document_did_save(meta: EditorMeta, ctx: &mut Context) {
+    let servers: Vec<_> = ctx.language_servers.keys().cloned().collect();
+    for language_id in &servers {
+        let server = &ctx.language_servers[language_id];
+        let text = match server.capabilities.as_ref().unwrap().text_document_sync {
+            Some(TextDocumentSyncCapability::Options(TextDocumentSyncOptions {
+                save:
+                    Some(TextDocumentSyncSaveOptions::SaveOptions(SaveOptions {
+                        include_text: Some(true),
+                    })),
+                ..
+            })) => ctx
+                .documents
+                .get(&meta.buffile)
+                .map(|doc| doc.text.to_string()),
+            _ => None,
+        };
 
-    let uri = Url::from_file_path(&meta.buffile).unwrap();
-    let params = DidSaveTextDocumentParams {
-        text_document: TextDocumentIdentifier { uri },
-        text,
-    };
-    ctx.notify::<DidSaveTextDocument>(language_id, params);
+        let uri = Url::from_file_path(&meta.buffile).unwrap();
+        let params = DidSaveTextDocumentParams {
+            text_document: TextDocumentIdentifier { uri },
+            text,
+        };
+        ctx.notify::<DidSaveTextDocument>(language_id, params);
+    }
 }
 
 pub fn spawn_file_watcher(
