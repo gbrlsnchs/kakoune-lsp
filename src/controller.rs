@@ -603,7 +603,10 @@ fn dispatch_editor_request(request: EditorRequest, ctx: &mut Context) {
             capabilities::capabilities(meta, ctx);
         }
         "apply-workspace-edit" => {
-            workspace::apply_edit_from_editor(meta, params, ctx);
+            if let Some(srv) = ctx.language_servers.first_key_value() {
+                let (_, srv_settings) = srv;
+                workspace::apply_edit_from_editor(meta, srv_settings, params, ctx);
+            }
         }
         request::SemanticTokensFullRequest::METHOD => {
             semantic_tokens::tokens_request(meta, ctx);
@@ -676,7 +679,7 @@ fn dispatch_server_request(
     let method: &str = &request.method;
     let result = match method {
         request::ApplyWorkspaceEdit::METHOD => {
-            workspace::apply_edit_from_server(request.params, ctx)
+            workspace::apply_edit_from_server(srv_settings, request.params, ctx)
         }
         request::RegisterCapability::METHOD => {
             let params: RegistrationParams = request
