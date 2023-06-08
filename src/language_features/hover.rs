@@ -104,11 +104,17 @@ pub fn editor_hover(
                 })
                 .filter(|(_, x)| !x.message.is_empty())
                 .map(|(language_id, x)| {
+                    let srv_settings = &ctx.language_servers[language_id];
                     // Indent line breaks to the same level as the bullet point
                     let message = (x.message.trim().to_string()
-                        + &format_related_information(x, ctx)
-                            .map(|s| "\n  ".to_string() + &s)
-                            .unwrap_or_default())
+                        + &format_related_information(
+                            x,
+                            (language_id, srv_settings),
+                            srv_settings,
+                            ctx,
+                        )
+                        .map(|s| "\n  ".to_string() + &s)
+                        .unwrap_or_default())
                         .replace('\n', "\n  ");
                     if for_hover_buffer {
                         // We are typically creating Markdown, so use a standard Markdown enumerator.

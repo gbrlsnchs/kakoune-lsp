@@ -204,14 +204,17 @@ pub fn editor_diagnostics(meta: EditorMeta, ctx: &mut Context) {
         write_response_to_fifo(meta, &ctx.diagnostics);
         return;
     }
+    let (_, main_settings) = ctx.language_servers.first_key_value().unwrap();
     let content = ctx
         .diagnostics
         .iter()
         .flat_map(|(filename, diagnostics)| {
             diagnostics
                 .iter()
-                .map(|x| {
-                    let p = match get_kakoune_position(filename, &x.range.start, ctx) {
+                .map(|(language_id, x)| {
+                    let srv_settings = &ctx.language_servers[language_id];
+                    let p = match get_kakoune_position(srv_settings, filename, &x.range.start, ctx)
+                    {
                         Some(position) => position,
                         None => {
                             warn!("Cannot get position from file {}", filename);
@@ -220,7 +223,7 @@ pub fn editor_diagnostics(meta: EditorMeta, ctx: &mut Context) {
                     };
                     format!(
                         "{}:{}:{}: {}: {}{}",
-                        short_file_path(filename, &ctx.root_path),
+                        short_file_path(filename, &srv_settings.root_path),
                         p.line,
                         p.column,
                         match x.severity {
@@ -234,7 +237,13 @@ pub fn editor_diagnostics(meta: EditorMeta, ctx: &mut Context) {
                             }
                         },
                         x.message,
-                        format_related_information(x, ctx).unwrap_or_default()
+                        format_related_information(
+                            x,
+                            (language_id, srv_settings),
+                            main_settings,
+                            ctx
+                        )
+                        .unwrap_or_default()
                     )
                 })
                 .collect::<Vec<_>>()
@@ -242,13 +251,19 @@ pub fn editor_diagnostics(meta: EditorMeta, ctx: &mut Context) {
         .join("\n");
     let command = format!(
         "lsp-show-diagnostics {} {}",
-        editor_quote(&ctx.root_path),
+        editor_quote(&main_settings.root_path),
         editor_quote(&content),
     );
     ctx.exec(meta, command);
 }
 
-pub fn format_related_information(d: &Diagnostic, ctx: &Context) -> Option<String> {
+pub fn format_related_information(
+    d: &Diagnostic,
+    srv: (&LanguageId, &ServerSettings),
+    main_settings: &ServerSettings,
+    ctx: &Context,
+) -> Option<String> {
+    let (language_id, srv_settings) = srv;
     d.related_information.as_ref().map(|infos| {
         "\n".to_string()
             + &infos
@@ -257,13 +272,14 @@ pub fn format_related_information(d: &Diagnostic, ctx: &Context) -> Option<Strin
                     let path = info.location.uri.to_file_path().unwrap();
                     let filename = path.to_str().unwrap();
                     let p = get_kakoune_position_with_fallback(
+                        srv_settings,
                         filename,
                         info.location.range.start,
                         ctx,
                     );
                     format!(
-                        "{}:{}:{}: {}",
-                        short_file_path(filename, &ctx.root_path),
+                        "{}:{}:{}: ({language_id}) {}",
+                        short_file_path(filename, &main_settings.root_path),
                         p.line,
                         p.column,
                         info.message
