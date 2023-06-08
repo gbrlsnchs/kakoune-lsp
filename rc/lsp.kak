@@ -1452,7 +1452,8 @@ $([ -z ${kak_hook_param+x} ] || echo hook = true)
 }
 
 # eclipse.jdt.ls Extension
-#
+
+declare-option str lsp_ejdtls_language
 define-command ejdtls-organize-imports -docstring "ejdtls-organize-imports: Organize imports." %{
     nop %sh{ (printf %s "
 session  = \"${kak_session}\"
@@ -1461,6 +1462,7 @@ buffile  = \"${kak_buffile}\"
 filetype = \"${kak_opt_filetype}\"
 version  = ${kak_timestamp:-0}
 method   = \"eclipse.jdt.ls/organizeImports\"
+$([ -z ${kak_opt_lsp_ejdtls_language} ] || echo language = \"${kak_opt_lsp_ejdtls_language}\")
 $([ -z ${kak_hook_param+x} ] || echo hook = true)
 [params]
 " | eval "${kak_opt_lsp_cmd} --request") > /dev/null 2>&1 < /dev/null & }
