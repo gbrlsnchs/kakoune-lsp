@@ -617,10 +617,14 @@ fn dispatch_editor_request(request: EditorRequest, ctx: &mut Context) {
         }
 
         show_message::SHOW_MESSAGE_REQUEST_NEXT => {
-            show_message::show_message_request_next(meta, ctx);
+            for srv in &ctx.language_servers {
+                show_message::show_message_request_next(meta, srv, ctx);
+            }
         }
         show_message::SHOW_MESSAGE_REQUEST_RESPOND => {
-            show_message::show_message_request_respond(params, ctx);
+            for srv in &ctx.language_servers {
+                show_message::show_message_request_respond(params, srv, ctx);
+            }
         }
 
         // CCLS

@@ -5,7 +5,11 @@ use jsonrpc_core::{Id, MethodCall};
 use lsp_types::{MessageActionItem, MessageType, ShowMessageRequestParams};
 use serde::Deserialize;
 
-use crate::{context::Context, types::EditorMeta, util::editor_quote};
+use crate::{
+    context::{Context, ServerSettings},
+    types::{EditorMeta, LanguageId},
+    util::editor_quote,
+};
 
 // commands to be handled
 pub const SHOW_MESSAGE_REQUEST_NEXT: &str = "window/showMessageRequest/showNext";
@@ -29,7 +33,11 @@ struct MessageRequestResponse {
 }
 
 /// Handles an user's response to a message request (or the user's request to display the next message request).
-pub fn show_message_request_respond(params: toml::Value, ctx: &mut Context) {
+pub fn show_message_request_respond(
+    params: toml::Value,
+    srv: (&LanguageId, &ServerSettings),
+    ctx: &mut Context,
+) {
     let resp =
         MessageRequestResponse::deserialize(params).expect("Cannot parse message request response");
     let item = resp
@@ -37,10 +45,14 @@ pub fn show_message_request_respond(params: toml::Value, ctx: &mut Context) {
         .and_then(|v| MessageActionItem::deserialize(v).ok())
         .map(|v| jsonrpc_core::to_value(v).expect("Cannot serialize item"))
         .unwrap_or(jsonrpc_core::Value::Null);
-    ctx.reply(resp.message_request_id, Ok(item));
+    ctx.reply(srv, resp.message_request_id, Ok(item));
 }
 
-pub fn show_message_request_next(meta: EditorMeta, ctx: &mut Context) {
+pub fn show_message_request_next(
+    meta: EditorMeta,
+    srv: (&LanguageId, &ServerSettings),
+    ctx: &mut Context,
+) {
     let (id, params) = match ctx.pending_message_requests.pop_front() {
         Some(v) => v,
         None => {
@@ -53,7 +65,7 @@ pub fn show_message_request_next(meta: EditorMeta, ctx: &mut Context) {
         _ => {
             // a ShowMessageRequest with no actions is just a ShowMessage notification.
             show_message(meta, params.typ, &params.message, ctx);
-            ctx.reply(id, Ok(serde_json::Value::Null));
+            ctx.reply(srv, id, Ok(serde_json::Value::Null));
             return;
         }
     };
