@@ -101,9 +101,15 @@ pub fn configuration(params: Params, ctx: &mut Context) -> Result<Value, jsonrpc
 pub fn workspace_symbol(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
     let params = WorkspaceSymbolParams::deserialize(params)
         .expect("Params should follow WorkspaceSymbolParams structure");
-    ctx.call::<WorkspaceSymbolRequest, _>(meta, params, move |ctx: &mut Context, meta, result| {
-        editor_workspace_symbol(meta, result, ctx)
-    });
+    ctx.call::<WorkspaceSymbolRequest, _>(
+        meta,
+        RequestParams::All(vec![params]),
+        move |ctx, meta, results| {
+            if let Some(result) = results.into_iter().find(|(_, v)| v.is_some()) {
+                editor_workspace_symbol(meta, result, ctx)
+            }
+        },
+    );
 }
 
 impl document_symbol::Symbol<WorkspaceSymbol> for WorkspaceSymbol {
@@ -137,21 +143,23 @@ impl document_symbol::Symbol<WorkspaceSymbol> for WorkspaceSymbol {
 
 fn editor_workspace_symbol(
     meta: EditorMeta,
-    result: Option<WorkspaceSymbolResponse>,
+    result: (LanguageId, Option<WorkspaceSymbolResponse>),
     ctx: &mut Context,
 ) {
+    let (language_id, result) = result;
+    let srv_settings = &ctx.language_servers[&language_id];
     let content = match result {
         Some(WorkspaceSymbolResponse::Flat(result)) => {
             if result.is_empty() {
                 return;
             }
-            document_symbol::format_symbol(result, false, &meta, ctx)
+            document_symbol::format_symbol(result, false, &meta, srv_settings, ctx)
         }
         Some(WorkspaceSymbolResponse::Nested(result)) => {
             if result.is_empty() {
                 return;
             }
-            document_symbol::format_symbol(result, false, &meta, ctx)
+            document_symbol::format_symbol(result, false, &meta, srv_settings, ctx)
         }
         None => {
             return;
@@ -159,7 +167,7 @@ fn editor_workspace_symbol(
     };
     let command = format!(
         "lsp-show-workspace-symbol {} {}",
-        editor_quote(&ctx.root_path),
+        editor_quote(&srv_settings.root_path),
         editor_quote(&content),
     );
     ctx.exec(meta, command);
