@@ -344,12 +344,13 @@ pub fn completion_item_resolve(meta: EditorMeta, params: EditorParams, ctx: &mut
             .drain(..)
             .nth(completion_item_index as usize)
             .unwrap();
+        let srv_settings = &ctx.language_servers[&language_id];
 
         match item.additional_text_edits {
             Some(edits) if !edits.is_empty() => {
                 // Not sure if this case ever happens, the spec is unclear.
                 let uri = Url::from_file_path(&meta.buffile).unwrap();
-                apply_text_edits(&meta, uri, edits, ctx);
+                apply_text_edits(&meta, srv_settings, uri, edits, ctx);
                 return;
             }
             _ => (),
@@ -365,10 +366,13 @@ pub fn completion_item_resolve(meta: EditorMeta, params: EditorParams, ctx: &mut
         meta,
         RequestParams::Each(req_params),
         move |tx: &mut Context, meta, results| {
-            if let Some((_, new_item)) = results.first() {
+            if let Some((language_id, new_item)) = results.first() {
+                let srv_settings = &ctx.language_servers[language_id];
+
                 editor_completion_item_resolve(
                     tx,
                     meta,
+                    srv_settings,
                     pager_active,
                     detail,
                     documentation,
@@ -382,6 +386,7 @@ pub fn completion_item_resolve(meta: EditorMeta, params: EditorParams, ctx: &mut
 fn editor_completion_item_resolve(
     ctx: &mut Context,
     meta: EditorMeta,
+    srv_settings: &ServerSettings,
     pager_active: bool,
     old_detail: Option<String>,
     old_documentation: Option<Documentation>,
@@ -400,6 +405,6 @@ fn editor_completion_item_resolve(
         );
     } else if let Some(resolved_edits) = new_item.additional_text_edits {
         let uri = Url::from_file_path(&meta.buffile).unwrap();
-        apply_text_edits(&meta, uri, resolved_edits, ctx)
+        apply_text_edits(&meta, srv_settings, uri, resolved_edits, ctx)
     }
 }

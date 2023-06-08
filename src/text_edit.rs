@@ -66,14 +66,21 @@ impl TextEditish<OneOf<TextEdit, AnnotatedTextEdit>> for OneOf<TextEdit, Annotat
 
 /// Apply text edits to the file pointed by uri either by asking Kakoune to modify corresponding
 /// buffer or by editing file directly when it's not open in editor.
-pub fn apply_text_edits(meta: &EditorMeta, uri: Url, edits: Vec<TextEdit>, ctx: &mut Context) {
-    apply_annotated_text_edits(meta, uri, edits, ctx)
+pub fn apply_text_edits(
+    meta: &EditorMeta,
+    srv_settings: &ServerSettings,
+    uri: Url,
+    edits: Vec<TextEdit>,
+    ctx: &mut Context,
+) {
+    apply_annotated_text_edits(meta, srv_settings, uri, edits, ctx)
 }
 
 /// Apply text edits to the file pointed by uri either by asking Kakoune to modify corresponding
 /// buffer or by editing file directly when it's not open in editor.
 pub fn apply_annotated_text_edits<T: TextEditish<T>>(
     meta: &EditorMeta,
+    srv_settings: &ServerSettings,
     uri: Url,
     edits: Vec<T>,
     ctx: &mut Context,
@@ -92,7 +99,7 @@ pub fn apply_annotated_text_edits<T: TextEditish<T>>(
             Some(uri),
             edits,
             &document.text,
-            ctx.offset_encoding,
+            srv_settings.offset_encoding,
             write_to_disk,
         ) {
             Some(cmd) => ctx.exec(meta, cmd),

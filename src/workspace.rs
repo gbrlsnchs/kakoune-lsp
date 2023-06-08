@@ -266,6 +266,7 @@ pub fn apply_document_resource_op(
 // TODO handle version, so change is not applied if buffer is modified (and need to show a warning)
 pub fn apply_edit(
     meta: EditorMeta,
+    srv_settings: &ServerSettings,
     edit: WorkspaceEdit,
     ctx: &mut Context,
 ) -> ApplyWorkspaceEditResponse {
@@ -273,7 +274,13 @@ pub fn apply_edit(
         match document_changes {
             DocumentChanges::Edits(edits) => {
                 for edit in edits {
-                    apply_annotated_text_edits(&meta, edit.text_document.uri, edit.edits, ctx);
+                    apply_annotated_text_edits(
+                        &meta,
+                        srv_settings,
+                        edit.text_document.uri,
+                        edit.edits,
+                        ctx,
+                    );
                 }
             }
             DocumentChanges::Operations(ops) => {
@@ -282,6 +289,7 @@ pub fn apply_edit(
                         DocumentChangeOperation::Edit(edit) => {
                             apply_annotated_text_edits(
                                 &meta,
+                                srv_settings,
                                 edit.text_document.uri,
                                 edit.edits,
                                 ctx,
@@ -303,7 +311,7 @@ pub fn apply_edit(
         }
     } else if let Some(changes) = edit.changes {
         for (uri, change) in changes {
-            apply_text_edits(&meta, uri, change, ctx);
+            apply_text_edits(&meta, srv_settings, uri, change, ctx);
         }
     }
     ApplyWorkspaceEditResponse {
@@ -318,20 +326,26 @@ struct EditorApplyEdit {
     edit: String,
 }
 
-pub fn apply_edit_from_editor(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
+pub fn apply_edit_from_editor(
+    meta: EditorMeta,
+    srv_settings: &ServerSettings,
+    params: EditorParams,
+    ctx: &mut Context,
+) {
     let params = EditorApplyEdit::deserialize(params).expect("Failed to parse params");
     let edit = WorkspaceEdit::deserialize(serde_json::from_str::<Value>(&params.edit).unwrap())
         .expect("Failed to parse edit");
 
-    apply_edit(meta, edit, ctx);
+    apply_edit(meta, srv_settings, edit, ctx);
 }
 
 pub fn apply_edit_from_server(
+    srv_settings: &ServerSettings,
     params: Params,
     ctx: &mut Context,
 ) -> Result<Value, jsonrpc_core::Error> {
     let params: ApplyWorkspaceEditParams = params.parse()?;
     let meta = meta_for_session(ctx.session.clone(), None);
-    let response = apply_edit(meta, params.edit, ctx);
+    let response = apply_edit(meta, srv_settings, params.edit, ctx);
     Ok(serde_json::to_value(response).unwrap())
 }

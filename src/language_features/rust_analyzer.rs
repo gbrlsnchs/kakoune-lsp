@@ -65,6 +65,13 @@ pub fn apply_source_change(meta: EditorMeta, params: ExecuteCommandParams, ctx: 
         cursor_position,
         ..
     } = serde_json::from_value(arg).expect("Invalid source change");
+
+    let srv_settings = meta
+        .language
+        .and_then(|id| ctx.language_servers.get(&id))
+        .or_else(|| ctx.language_servers.first_key_value().map(|(_, v)| v))
+        .unwrap();
+
     if let Some(document_changes) = document_changes {
         for op in document_changes {
             match op {
@@ -87,13 +94,13 @@ pub fn apply_source_change(meta: EditorMeta, params: ExecuteCommandParams, ctx: 
                              }| TextEdit { range, new_text },
                         )
                         .collect();
-                    apply_text_edits(&meta, uri, edits, ctx);
+                    apply_text_edits(&meta, srv_settings, uri, edits, ctx);
                 }
             }
         }
     } else if let Some(changes) = changes {
         for (uri, change) in changes {
-            apply_text_edits(&meta, uri, change, ctx);
+            apply_text_edits(&meta, srv_settings, uri, change, ctx);
         }
     }
     if let (
@@ -106,21 +113,10 @@ pub fn apply_source_change(meta: EditorMeta, params: ExecuteCommandParams, ctx: 
     {
         let buffile = uri.to_file_path().unwrap();
         let buffile = buffile.to_str().unwrap();
-        // If the user provided a language ID that helps with identifying
-        // which server to use, let's use it. Otherwise, let's grab the first
-        // server we have, it's probably the right one.
-        let offset_encoding = meta
-            .language
-            .and_then(|id| ctx.language_servers.get(&id))
-            .map(|v| v.offset_encoding)
-            .or_else(|| {
-                ctx.language_servers
-                    .first_key_value()
-                    .map(|(_, v)| v.offset_encoding)
-            })
-            .unwrap_or_default();
         let position = match ctx.documents.get(buffile) {
-            Some(document) => lsp_position_to_kakoune(position, &document.text, offset_encoding),
+            Some(document) => {
+                lsp_position_to_kakoune(position, &document.text, srv_settings.offset_encoding)
+            }
             _ => KakounePosition {
                 line: position.line + 1,
                 column: position.character + 1,
