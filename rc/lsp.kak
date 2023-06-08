@@ -1326,6 +1326,7 @@ buf_line_count = ${kak_buf_line_count}
 
 # CCLS Extension
 
+declare-option str lsp_ccls_language
 define-command ccls-navigate -docstring "Navigate C/C++/ObjectiveC file" -params 1 %{
     nop %sh{ (printf %s "
 session  = \"${kak_session}\"
@@ -1334,6 +1335,7 @@ buffile  = \"${kak_buffile}\"
 filetype = \"${kak_opt_filetype}\"
 version  = ${kak_timestamp:-0}
 method   = \"\$ccls/navigate\"
+$([ -z ${kak_opt_lsp_ccls_language} ] || echo language = \"${kak_opt_lsp_ccls_language}\")
 $([ -z ${kak_hook_param+x} ] || echo hook = true)
 [params]
 direction = \"$1\"
@@ -1351,6 +1353,7 @@ buffile  = \"${kak_buffile}\"
 filetype = \"${kak_opt_filetype}\"
 version  = ${kak_timestamp:-0}
 method   = \"\$ccls/vars\"
+$([ -z ${kak_opt_lsp_ccls_language} ] || echo language = \"${kak_opt_lsp_ccls_language}\")
 $([ -z ${kak_hook_param+x} ] || echo hook = true)
 [params.position]
 line     = ${kak_cursor_line}
@@ -1372,6 +1375,7 @@ buffile  = \"${kak_buffile}\"
 filetype = \"${kak_opt_filetype}\"
 version  = ${kak_timestamp:-0}
 method   = \"\$ccls/inheritance\"
+$([ -z ${kak_opt_lsp_ccls_language} ] || echo language = \"${kak_opt_lsp_ccls_language}\")
 $([ -z ${kak_hook_param+x} ] || echo hook = true)
 [params]
 derived  = $derived
@@ -1395,6 +1399,7 @@ buffile  = \"${kak_buffile}\"
 filetype = \"${kak_opt_filetype}\"
 version  = ${kak_timestamp:-0}
 method   = \"\$ccls/call\"
+$([ -z ${kak_opt_lsp_ccls_language} ] || echo language = \"${kak_opt_lsp_ccls_language}\")
 $([ -z ${kak_hook_param+x} ] || echo hook = true)
 [params]
 callee   = $callee
@@ -1419,6 +1424,7 @@ buffile  = \"${kak_buffile}\"
 filetype = \"${kak_opt_filetype}\"
 version  = ${kak_timestamp:-0}
 method   = \"\$ccls/member\"
+$([ -z ${kak_opt_lsp_ccls_language} ] || echo language = \"${kak_opt_lsp_ccls_language}\")
 $([ -z ${kak_hook_param+x} ] || echo hook = true)
 [params]
 kind     = $kind

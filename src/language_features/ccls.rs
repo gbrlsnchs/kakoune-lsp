@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::context::*;
 use crate::language_features::goto;
 use crate::position::*;
@@ -36,18 +38,29 @@ impl Request for NavigateRequest {
 
 pub fn navigate(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
     let params = KakouneNavigateParams::deserialize(params).unwrap();
-    let req_params = NavigateParams {
-        text_document: TextDocumentIdentifier {
-            uri: Url::from_file_path(&meta.buffile).unwrap(),
-        },
-        position: get_lsp_position(&meta.buffile, &params.position, ctx).unwrap(),
-        direction: params.direction,
-    };
+    let (language_id, srv_settings) = meta
+        .language
+        .and_then(|id| ctx.language_servers.get_key_value(&id))
+        .or_else(|| ctx.language_servers.first_key_value())
+        .unwrap();
+    let mut req_params = HashMap::new();
+    req_params.insert(
+        language_id.clone(),
+        vec![NavigateParams {
+            text_document: TextDocumentIdentifier {
+                uri: Url::from_file_path(&meta.buffile).unwrap(),
+            },
+            position: get_lsp_position(srv_settings, &meta.buffile, &params.position, ctx).unwrap(),
+            direction: params.direction,
+        }],
+    );
     ctx.call::<NavigateRequest, _>(
         meta,
-        req_params,
-        move |ctx: &mut Context, meta, response| {
-            goto::goto(meta, response, ctx);
+        RequestParams::Each(req_params),
+        move |ctx: &mut Context, meta, results| {
+            if let Some(response) = results.into_iter().find(|(_, v)| v.is_some()) {
+                goto::goto(meta, response, ctx);
+            }
         },
     );
 }
@@ -74,15 +87,34 @@ impl Request for VarsRequest {
 
 pub fn vars(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
     let params = PositionParams::deserialize(params).unwrap();
-    let req_params = VarsParams {
-        text_document: TextDocumentIdentifier {
-            uri: Url::from_file_path(&meta.buffile).unwrap(),
+    let (language_id, srv_settings) = meta
+        .language
+        .and_then(|id| ctx.language_servers.get_key_value(&id))
+        .or_else(|| ctx.language_servers.first_key_value())
+        .unwrap();
+    let mut req_params = HashMap::new();
+    req_params.insert(
+        language_id.clone(),
+        vec![VarsParams {
+            text_document: TextDocumentIdentifier {
+                uri: Url::from_file_path(&meta.buffile).unwrap(),
+            },
+            position: get_lsp_position(srv_settings, &meta.buffile, &params.position, ctx).unwrap(),
+        }],
+    );
+    ctx.call::<VarsRequest, _>(
+        meta,
+        RequestParams::Each(req_params),
+        move |ctx: &mut Context, meta, results| {
+            if let Some((language_id, result)) = results.into_iter().find(|(_, v)| v.is_some()) {
+                goto::goto(
+                    meta,
+                    (language_id, result.map(GotoDefinitionResponse::Array)),
+                    ctx,
+                );
+            }
         },
-        position: get_lsp_position(&meta.buffile, &params.position, ctx).unwrap(),
-    };
-    ctx.call::<VarsRequest, _>(meta, req_params, move |ctx: &mut Context, meta, result| {
-        goto::goto(meta, result.map(GotoDefinitionResponse::Array), ctx);
-    });
+    );
 }
 
 // $ccls/inheritance
@@ -113,17 +145,36 @@ impl Request for InheritanceRequest {
 
 pub fn inheritance(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
     let params = KakouneInheritanceParams::deserialize(params).unwrap();
-    let req_params = InheritanceParams {
-        text_document: TextDocumentIdentifier {
-            uri: Url::from_file_path(&meta.buffile).unwrap(),
+    let (language_id, srv_settings) = meta
+        .language
+        .and_then(|id| ctx.language_servers.get_key_value(&id))
+        .or_else(|| ctx.language_servers.first_key_value())
+        .unwrap();
+    let mut req_params = HashMap::new();
+    req_params.insert(
+        language_id.clone(),
+        vec![InheritanceParams {
+            text_document: TextDocumentIdentifier {
+                uri: Url::from_file_path(&meta.buffile).unwrap(),
+            },
+            position: get_lsp_position(srv_settings, &meta.buffile, &params.position, ctx).unwrap(),
+            levels: params.levels,
+            derived: params.derived,
+        }],
+    );
+    ctx.call::<InheritanceRequest, _>(
+        meta,
+        RequestParams::Each(req_params),
+        move |ctx, meta, results| {
+            if let Some((language_id, result)) = results.into_iter().find(|(_, v)| v.is_some()) {
+                goto::goto(
+                    meta,
+                    (language_id, result.map(GotoDefinitionResponse::Array)),
+                    ctx,
+                );
+            }
         },
-        position: get_lsp_position(&meta.buffile, &params.position, ctx).unwrap(),
-        levels: params.levels,
-        derived: params.derived,
-    };
-    ctx.call::<InheritanceRequest, _>(meta, req_params, move |ctx: &mut Context, meta, result| {
-        goto::goto(meta, result.map(GotoDefinitionResponse::Array), ctx);
-    });
+    );
 }
 
 // $ccls/call
@@ -152,16 +203,35 @@ impl Request for CallRequest {
 
 pub fn call(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
     let params = KakouneCallParams::deserialize(params).unwrap();
-    let req_params = CallParams {
-        text_document: TextDocumentIdentifier {
-            uri: Url::from_file_path(&meta.buffile).unwrap(),
+    let (language_id, srv_settings) = meta
+        .language
+        .and_then(|id| ctx.language_servers.get_key_value(&id))
+        .or_else(|| ctx.language_servers.first_key_value())
+        .unwrap();
+    let mut req_params = HashMap::new();
+    req_params.insert(
+        language_id.clone(),
+        vec![CallParams {
+            text_document: TextDocumentIdentifier {
+                uri: Url::from_file_path(&meta.buffile).unwrap(),
+            },
+            position: get_lsp_position(srv_settings, &meta.buffile, &params.position, ctx).unwrap(),
+            callee: params.callee,
+        }],
+    );
+    ctx.call::<CallRequest, _>(
+        meta,
+        RequestParams::Each(req_params),
+        move |ctx, meta, results| {
+            if let Some((language_id, result)) = results.into_iter().find(|(_, v)| v.is_some()) {
+                goto::goto(
+                    meta,
+                    (language_id, result.map(GotoDefinitionResponse::Array)),
+                    ctx,
+                );
+            }
         },
-        position: get_lsp_position(&meta.buffile, &params.position, ctx).unwrap(),
-        callee: params.callee,
-    };
-    ctx.call::<CallRequest, _>(meta, req_params, move |ctx: &mut Context, meta, result| {
-        goto::goto(meta, result.map(GotoDefinitionResponse::Array), ctx);
-    });
+    );
 }
 
 // $ccls/member
@@ -190,16 +260,35 @@ impl Request for MemberRequest {
 
 pub fn member(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
     let params = KakouneMemberParams::deserialize(params).unwrap();
-    let req_params = MemberParams {
-        text_document: TextDocumentIdentifier {
-            uri: Url::from_file_path(&meta.buffile).unwrap(),
+    let (language_id, srv_settings) = meta
+        .language
+        .and_then(|id| ctx.language_servers.get_key_value(&id))
+        .or_else(|| ctx.language_servers.first_key_value())
+        .unwrap();
+    let mut req_params = HashMap::new();
+    req_params.insert(
+        language_id.clone(),
+        vec![MemberParams {
+            text_document: TextDocumentIdentifier {
+                uri: Url::from_file_path(&meta.buffile).unwrap(),
+            },
+            position: get_lsp_position(srv_settings, &meta.buffile, &params.position, ctx).unwrap(),
+            kind: params.kind,
+        }],
+    );
+    ctx.call::<MemberRequest, _>(
+        meta,
+        RequestParams::Each(req_params),
+        move |ctx, meta, results| {
+            if let Some((language_id, result)) = results.into_iter().find(|(_, v)| v.is_some()) {
+                goto::goto(
+                    meta,
+                    (language_id, result.map(GotoDefinitionResponse::Array)),
+                    ctx,
+                )
+            }
         },
-        position: get_lsp_position(&meta.buffile, &params.position, ctx).unwrap(),
-        kind: params.kind,
-    };
-    ctx.call::<MemberRequest, _>(meta, req_params, move |ctx: &mut Context, meta, result| {
-        goto::goto(meta, result.map(GotoDefinitionResponse::Array), ctx)
-    });
+    );
 }
 
 // Semantic Highlighting
@@ -364,12 +453,17 @@ pub fn publish_semantic_highlighting(params: Params, ctx: &mut Context) {
         Some(meta) => meta,
         None => return,
     };
+    let (_, srv_settings) = meta
+        .language
+        .and_then(|id| ctx.language_servers.get_key_value(&id))
+        .or_else(|| ctx.language_servers.first_key_value())
+        .unwrap();
     let ranges = params
         .symbols
         .iter()
         .flat_map(|x| {
             let face = x.get_face();
-            let offset_encoding = ctx.offset_encoding;
+            let offset_encoding = srv_settings.offset_encoding;
             x.ls_ranges.iter().filter_map(move |r| {
                 if face.is_empty() {
                     warn!("No face found for {:?}", x);
