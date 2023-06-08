@@ -221,8 +221,8 @@ pub fn start(
                     ServerMessage::Request(call) => match call {
                         Call::MethodCall(request) => {
                             dispatch_server_request(
-                                srv,
                                 initial_request_meta.clone(),
+                                srv,
                                 request,
                                 &mut ctx,
                             );
@@ -230,6 +230,7 @@ pub fn start(
                         Call::Notification(notification) => {
                             dispatch_server_notification(
                                 initial_request_meta.clone(),
+                                srv,
                                 &notification.method,
                                 notification.params,
                                 &mut ctx,
@@ -674,8 +675,8 @@ fn dispatch_editor_request(request: EditorRequest, ctx: &mut Context) {
 }
 
 fn dispatch_server_request(
-    srv: (&LanguageId, &ServerSettings),
     meta: EditorMeta,
+    srv: (&LanguageId, &ServerSettings),
     request: MethodCall,
     ctx: &mut Context,
 ) {
@@ -735,13 +736,19 @@ fn dispatch_server_request(
     ctx.reply(srv, request.id, result);
 }
 
-fn dispatch_server_notification(meta: EditorMeta, method: &str, params: Params, ctx: &mut Context) {
+fn dispatch_server_notification(
+    meta: EditorMeta,
+    srv: (&LanguageId, &ServerSettings),
+    method: &str,
+    params: Params,
+    ctx: &mut Context,
+) {
     match method {
         notification::Progress::METHOD => {
             progress::dollar_progress(meta, params, ctx);
         }
         notification::PublishDiagnostics::METHOD => {
-            diagnostics::publish_diagnostics(params, ctx);
+            diagnostics::publish_diagnostics(params, srv, ctx);
         }
         "$cquery/publishSemanticHighlighting" => {
             cquery::publish_semantic_highlighting(params, ctx);

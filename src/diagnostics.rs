@@ -11,12 +11,19 @@ use lsp_types::*;
 use std::collections::HashMap;
 use std::fmt::Write as _;
 
-pub fn publish_diagnostics(params: Params, ctx: &mut Context) {
+pub fn publish_diagnostics(params: Params, srv: (&LanguageId, &ServerSettings), ctx: &mut Context) {
+    let (language_id, srv_settings) = srv;
     let params: PublishDiagnosticsParams = params.parse().expect("Failed to parse params");
     let path = params.uri.to_file_path().unwrap();
     let buffile = path.to_str().unwrap();
-    ctx.diagnostics
-        .insert(buffile.to_string(), params.diagnostics);
+    ctx.diagnostics.insert(
+        buffile.to_string(),
+        params
+            .diagnostics
+            .into_iter()
+            .map(|d| (language_id.clone(), d))
+            .collect(),
+    );
     let document = ctx.documents.get(buffile);
     if document.is_none() {
         return;
@@ -26,12 +33,13 @@ pub fn publish_diagnostics(params: Params, ctx: &mut Context) {
     let diagnostics = &ctx.diagnostics[buffile];
     let inline_diagnostics = diagnostics
         .iter()
-        .sorted_unstable_by_key(|x| x.severity)
+        .sorted_unstable_by_key(|(_, x)| x.severity)
         .rev()
-        .map(|x| {
+        .map(|(language_id, x)| {
+            let srv_settings = &ctx.language_servers[language_id];
             format!(
                 "{}|{}",
-                lsp_range_to_kakoune(&x.range, &document.text, ctx.offset_encoding),
+                lsp_range_to_kakoune(&x.range, &document.text, srv_settings.offset_encoding),
                 match x.severity {
                     Some(DiagnosticSeverity::ERROR) => "DiagnosticError",
                     Some(DiagnosticSeverity::HINT) => "DiagnosticHint",
@@ -48,7 +56,7 @@ pub fn publish_diagnostics(params: Params, ctx: &mut Context) {
 
     // Assemble a list of diagnostics by line number
     let mut lines_with_diagnostics = HashMap::new();
-    for diagnostic in diagnostics {
+    for (language_id, diagnostic) in diagnostics {
         let face = match diagnostic.severity {
             Some(DiagnosticSeverity::ERROR) => "InlayDiagnosticError",
             Some(DiagnosticSeverity::HINT) => "InlayDiagnosticHint",
@@ -59,15 +67,18 @@ pub fn publish_diagnostics(params: Params, ctx: &mut Context) {
                 "InlayDiagnosticWarning"
             }
         };
-        let line_diagnostics = lines_with_diagnostics
+        let (_, line_diagnostics) = lines_with_diagnostics
             .entry(diagnostic.range.end.line)
-            .or_insert(LineDiagnostics {
-                range_end: diagnostic.range.end,
-                symbols: String::new(),
-                text: "",
-                text_face: "",
-                text_severity: None,
-            });
+            .or_insert((
+                language_id.clone(),
+                LineDiagnostics {
+                    range_end: diagnostic.range.end,
+                    symbols: String::new(),
+                    text: "",
+                    text_face: "",
+                    text_severity: None,
+                },
+            ));
 
         let severity = diagnostic.severity.unwrap_or(DiagnosticSeverity::WARNING);
         if line_diagnostics
@@ -91,12 +102,13 @@ pub fn publish_diagnostics(params: Params, ctx: &mut Context) {
     // Assemble ranges based on the lines
     let inlay_diagnostics = lines_with_diagnostics
         .iter()
-        .map(|(line_number, line_diagnostics)| {
+        .map(|(line_number, (language_id, line_diagnostics))| {
+            let srv_settings = &ctx.language_servers[language_id];
             let line_text = get_line(*line_number as usize, &document.text);
             let mut pos = lsp_position_to_kakoune(
                 &line_diagnostics.range_end,
                 &document.text,
-                ctx.offset_encoding,
+                srv_settings.offset_encoding,
             );
             pos.column = std::cmp::max(line_text.len_bytes() as u32, 1);
 
@@ -149,10 +161,10 @@ pub fn gather_line_flags(ctx: &Context, buffile: &str) -> (String, u32, u32, u32
         .get(buffile)
         .unwrap_or(&empty)
         .iter()
-        .map(|lens| (lens.range.start.line, "%opt[lsp_code_lens_sign]"));
+        .map(|(_, lens)| (lens.range.start.line, "%opt[lsp_code_lens_sign]"));
 
     let empty = vec![];
-    let diagnostics = diagnostics.unwrap_or(&empty).iter().map(|x| {
+    let diagnostics = diagnostics.unwrap_or(&empty).iter().map(|(_, x)| {
         (
             x.range.start.line,
             match x.severity {
