@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::mem;
@@ -38,7 +39,7 @@ pub fn start(
     initial_request: EditorRequest,
     config: Config,
 ) {
-    let mut language_servers = HashMap::with_capacity(routes.len());
+    let mut language_servers = BTreeMap::new();
     for route in routes {
         {
             // should be fine to unwrap because request was already routed which means language is configured
