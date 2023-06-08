@@ -8,31 +8,54 @@ use serde::Deserialize;
 use url::Url;
 
 pub fn text_document_range_formatting(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
-    if meta.fifo.is_none() && !attempt_server_capability(ctx, &meta, CAPABILITY_RANGE_FORMATTING) {
+    let eligible_servers: Vec<_> = ctx
+        .language_servers
+        .iter()
+        .filter(|srv| attempt_server_capability(*srv, &meta, CAPABILITY_RANGE_FORMATTING))
+        .collect();
+    if meta.fifo.is_none() && eligible_servers.is_empty() {
         return;
     }
 
     let params = RangeFormattingParams::deserialize(params)
         .expect("Params should follow RangeFormattingParams structure");
 
-    let req_params = params
-        .ranges
-        .iter()
-        .map(|range| DocumentRangeFormattingParams {
-            text_document: TextDocumentIdentifier {
-                uri: Url::from_file_path(&meta.buffile).unwrap(),
-            },
-            range: *range,
-            options: params.formatting_options.clone(),
-            work_done_progress_params: Default::default(),
+    let req_params = eligible_servers
+        .into_iter()
+        .map(|(language_id, _)| {
+            (
+                language_id.clone(),
+                params
+                    .ranges
+                    .iter()
+                    .map(|range| DocumentRangeFormattingParams {
+                        text_document: TextDocumentIdentifier {
+                            uri: Url::from_file_path(&meta.buffile).unwrap(),
+                        },
+                        range: *range,
+                        options: params.formatting_options.clone(),
+                        work_done_progress_params: Default::default(),
+                    })
+                    .collect(),
+            )
         })
         .collect();
-    ctx.batch_call::<RangeFormatting, _>(
+    ctx.call::<RangeFormatting, _>(
         meta,
-        req_params,
-        move |ctx: &mut Context, meta: EditorMeta, results: Vec<Option<Vec<TextEdit>>>| {
-            let text_edits = results.into_iter().flatten().flatten().collect::<Vec<_>>();
-            editor_range_formatting(meta, text_edits, ctx)
+        RequestParams::Each(req_params),
+        move |ctx, meta, results| {
+            if let Some((first_id, _)) = results.iter().find(|(_, v)| v.is_some()) {
+                let results: Vec<_> = results
+                    .into_iter()
+                    .filter(|(language_id, _)| language_id == first_id)
+                    .collect();
+                let text_edits = results
+                    .into_iter()
+                    .flat_map(|(_, v)| v)
+                    .flatten()
+                    .collect::<Vec<_>>();
+                editor_range_formatting(meta, (*first_id, text_edits), ctx)
+            }
         },
     );
 }
