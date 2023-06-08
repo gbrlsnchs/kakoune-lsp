@@ -67,9 +67,7 @@ pub fn text_document_did_change(
         text: Rope::from_str(&params.draft),
     };
     ctx.documents.insert(meta.buffile.clone(), document);
-    srv_settings
-        .diagnostics
-        .insert(meta.buffile.clone(), Vec::new());
+    ctx.diagnostics.insert(meta.buffile.clone(), Vec::new());
     let req_params = DidChangeTextDocumentParams {
         text_document: VersionedTextDocumentIdentifier {
             uri,
