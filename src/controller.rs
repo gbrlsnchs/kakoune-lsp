@@ -261,6 +261,7 @@ pub fn start(
                                         continue;
                                     }
                                     remove_outstanding_request(
+                                        &language_id,
                                         &mut ctx,
                                         method,
                                         meta.buffile.clone(),
@@ -297,6 +298,7 @@ pub fn start(
                                         continue;
                                     }
                                     remove_outstanding_request(
+                                        &language_id,
                                         &mut ctx,
                                         method,
                                         meta.buffile.clone(),

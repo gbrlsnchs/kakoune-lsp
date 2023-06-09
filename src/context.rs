@@ -73,7 +73,8 @@ pub struct Context {
     pub dynamic_config: DynamicConfig,
     pub editor_tx: Sender<EditorResponse>,
     pub language_servers: BTreeMap<LanguageId, ServerSettings>,
-    pub outstanding_requests: HashMap<(&'static str, String, Option<String>), OutstandingRequests>,
+    pub outstanding_requests:
+        HashMap<(LanguageId, &'static str, String, Option<String>), OutstandingRequests>,
     pub pending_requests: Vec<EditorRequest>,
     pub pending_message_requests: VecDeque<(Id, ShowMessageRequestParams)>,
     pub request_counter: u64,
@@ -82,7 +83,7 @@ pub struct Context {
     pub work_done_progress: HashMap<NumberOrString, Option<WorkDoneProgressBegin>>,
     pub work_done_progress_report_timestamp: time::Instant,
     pub pending_file_watchers:
-        HashMap<(LanguageId, Option<PathBuf>), Vec<CompiledFileSystemWatcher>>,
+        HashMap<(LanguageId, String, Option<PathBuf>), Vec<CompiledFileSystemWatcher>>,
 }
 
 pub struct ContextBuilder {
@@ -388,39 +389,44 @@ fn add_outstanding_request(
     client: Option<String>,
     id: Id,
 ) {
-    let to_cancel = match ctx.outstanding_requests.entry((method, buffile, client)) {
-        Entry::Occupied(mut e) => {
-            let OutstandingRequests { oldest, youngest } = e.get_mut();
-            if oldest.is_none() {
-                *oldest = Some(id);
-                None
-            } else {
-                let mut tmp = Some(id);
-                std::mem::swap(youngest, &mut tmp);
-                tmp
+    let to_cancel =
+        match ctx
+            .outstanding_requests
+            .entry((language_id.clone(), method, buffile, client))
+        {
+            Entry::Occupied(mut e) => {
+                let OutstandingRequests { oldest, youngest } = e.get_mut();
+                if oldest.is_none() {
+                    *oldest = Some(id);
+                    None
+                } else {
+                    let mut tmp = Some(id);
+                    std::mem::swap(youngest, &mut tmp);
+                    tmp
+                }
             }
-        }
-        Entry::Vacant(e) => {
-            e.insert(OutstandingRequests {
-                oldest: Some(id),
-                youngest: None,
-            });
-            None
-        }
-    };
+            Entry::Vacant(e) => {
+                e.insert(OutstandingRequests {
+                    oldest: Some(id),
+                    youngest: None,
+                });
+                None
+            }
+        };
     if let Some(id) = to_cancel {
         ctx.cancel(language_id, id);
     }
 }
 
 pub fn remove_outstanding_request(
+    language_id: &LanguageId,
     ctx: &mut Context,
     method: &'static str,
     buffile: String,
     client: Option<String>,
     id: &Id,
 ) {
-    let key = (method, buffile, client);
+    let key = (language_id.clone(), method, buffile, client);
     if let Some(outstanding) = ctx.outstanding_requests.get_mut(&key) {
         if outstanding.youngest.as_ref() == Some(id) {
             outstanding.youngest = None;
@@ -432,9 +438,10 @@ pub fn remove_outstanding_request(
         }
     }
     error!(
-        "Not in outstanding requests: method {} buffile {} client {}",
+        "[{}] Not in outstanding requests: method {} buffile {} client {}",
         key.0,
         key.1,
-        key.2.unwrap_or_default()
+        key.2,
+        key.3.unwrap_or_default()
     );
 }
