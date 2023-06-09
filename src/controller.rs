@@ -777,7 +777,11 @@ fn dispatch_server_notification(
                 .expect("Failed to parse LogMessageParams params");
             ctx.exec(
                 meta,
-                format!("lsp-show-message-log {}", editor_quote(&params.message)),
+                format!(
+                    "lsp-show-message-log {} {}",
+                    editor_quote(language_id),
+                    editor_quote(&params.message)
+                ),
             );
         }
         "telemetry/event" => {
