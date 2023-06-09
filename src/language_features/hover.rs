@@ -118,7 +118,7 @@ pub fn editor_hover(
                         .replace('\n', "\n  ");
                     if for_hover_buffer {
                         // We are typically creating Markdown, so use a standard Markdown enumerator.
-                        return format!("* {}", message);
+                        return format!("* [{language_id}] {message}");
                     }
 
                     let face = x
@@ -136,11 +136,8 @@ pub fn editor_hover(
                         .unwrap_or(FACE_INFO_DEFAULT);
 
                     format!(
-                        "• [{}] {{{}}}{}{{{}}}",
-                        language_id,
-                        face,
+                        "• [{language_id}] {{{face}}}{}{{{FACE_INFO_DEFAULT}}}",
                         escape_kakoune_markup(&message),
-                        FACE_INFO_DEFAULT,
                     )
                 })
                 .join("\n")
@@ -262,7 +259,7 @@ pub fn editor_hover(
                 cursor,
                 info.iter()
                     .map(|(_, contents)| contents.replace('§', "§§"))
-                    .join("\n---n"),
+                    .join("\n---\n"),
                 diagnostics.replace('§', "§§"),
                 code_lenses.replace('§', "§§"),
             );
@@ -327,25 +324,24 @@ fn show_hover_in_hover_client(
     contents: Vec<(bool, String)>,
     diagnostics: String,
 ) {
-    // TODO: Should any containing markdown be enough to use markdown?
+    // NOTE: Should any containing markdown be enough to use markdown?
     let is_markdown = contents.iter().any(|(is_markdown, _)| *is_markdown);
     let contents = contents
         .into_iter()
-        .map(|(_, contents)| {
-            if diagnostics.is_empty() {
-                contents
-            } else {
-                formatdoc!(
-                    "{}
+        .map(|(_, content)| content)
+        .join("\n---\n");
+    let contents = if diagnostics.is_empty() {
+        contents
+    } else {
+        formatdoc!(
+            "{}
 
              ## Diagnostics
              {}",
-                    contents,
-                    diagnostics,
-                )
-            }
-        })
-        .join("\n---\n");
+            contents,
+            diagnostics,
+        )
+    };
 
     let command = format!(
         "%[ edit! -scratch *hover*; \
