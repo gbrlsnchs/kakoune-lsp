@@ -47,7 +47,7 @@ pub fn initialize(meta: EditorMeta, ctx: &mut Context) {
         ]),
     });
     #[allow(deprecated)] // for root_path
-    let params = ctx
+    let req_params = ctx
         .language_servers
         .iter()
         .enumerate()
@@ -403,7 +403,7 @@ pub fn initialize(meta: EditorMeta, ctx: &mut Context) {
         )
         .collect();
 
-    ctx.call::<Initialize, _>(meta, RequestParams::Each(params) , move |ctx, _meta, results| {
+    ctx.call::<Initialize, _>(meta, RequestParams::Each(req_params) , move |ctx, _meta, results| {
         let results: HashMap<_,_> = results.into_iter().collect();
         let servers: Vec<_> = ctx.language_servers.keys().cloned().collect();
 
