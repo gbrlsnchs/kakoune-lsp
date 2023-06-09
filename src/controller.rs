@@ -20,6 +20,7 @@ use crate::util::*;
 use crate::workspace;
 use crossbeam_channel::Select;
 use crossbeam_channel::{never, tick, Receiver, Sender};
+use itertools::Itertools;
 use jsonrpc_core::{Call, ErrorCode, MethodCall, Output, Params};
 use lsp_types::error_codes::CONTENT_MODIFIED;
 use lsp_types::notification::Notification;
@@ -159,14 +160,19 @@ pub fn start(
                 // capabilities also serve as a marker of completing initialization
                 // we park all requests from editor before initialization is complete
                 // and then dispatch them
-                if ctx
+                let parked: Vec<_> = ctx
                     .language_servers
                     .iter()
-                    .all(|(_, srv)| srv.capabilities.is_some())
-                {
+                    .filter(|(_, srv)| srv.capabilities.is_none())
+                    .collect();
+                if parked.is_empty() {
                     dispatch_incoming_editor_request(msg, &mut ctx);
                 } else {
-                    debug!("Language servers are still not initialized, parking request");
+                    let servers = parked.into_iter().map(|(s, _)| s).join(", ");
+                    debug!(
+                        "Language servers {} are still not initialized, parking request",
+                        servers
+                    );
                     let err =
                         "lsp-show-error 'language servers are still not initialized, parking request'";
                     match &*msg.method {
