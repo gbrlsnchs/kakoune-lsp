@@ -24,13 +24,15 @@ pub fn request_initialization_options_from_kakoune(
     request_dynamic_configuration_from_kakoune(meta, ctx);
     let mut sections = Vec::with_capacity(ctx.language_servers.len());
     let servers: Vec<_> = ctx.language_servers.keys().cloned().collect();
-    for language_id in &servers {
+    for server_name in &servers {
         let settings = ctx
             .dynamic_config
             .language
-            .get(language_id)
-            .and_then(|lang| lang.settings.as_ref());
-        let settings = configured_section(ctx, language_id, settings);
+            .get(&ctx.language_id)
+            .and_then(|m| m.get(server_name))
+            .and_then(|v| v.settings)
+            .as_ref();
+        let settings = configured_section(ctx, server_name, settings);
         if settings.is_some() {
             sections.push(settings);
             continue;
@@ -42,8 +44,13 @@ pub fn request_initialization_options_from_kakoune(
             continue;
         }
 
-        let lang = ctx.config.language.get(language_id).unwrap();
-        let settings = configured_section(ctx, language_id, lang.settings.as_ref());
+        let lang = ctx
+            .config
+            .language
+            .get(&ctx.language_id)
+            .and_then(|m| m.get(server_name))
+            .unwrap();
+        let settings = configured_section(ctx, server_name, lang.settings.as_ref());
         sections.push(settings);
     }
     sections
@@ -58,7 +65,10 @@ pub fn configured_section(
         ctx.config
             .language
             .get(language_id)
-            .and_then(|cfg| cfg.settings_section.as_ref())
+            .and_then(|cfg| {
+                debug!("configured section for {language_id}: {:?}", cfg);
+                cfg.settings_section.as_ref()
+            })
             .and_then(|section| settings.get(section).cloned())
     })
 }

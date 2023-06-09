@@ -100,14 +100,16 @@ pub fn start(config: &Config, initial_request: Option<String>) -> i32 {
                     continue 'event_loop;
                 }
 
-                let language_ids = language_ids.unwrap();
-                let routes: Vec<_> = language_ids
+                let (language_id, servers) = language_ids.unwrap();
+                let language  = &languages[language_id];
+                let routes: Vec<_> = servers
                     .iter()
-                    .map(|language_id| {
-                        let root = find_project_root(language_id, &languages[language_id].roots, &request.meta.buffile);
+                    .map(|server_name| {
+                        let root = find_project_root(language_id, &language[server_name].roots, &request.meta.buffile);
                         let route = Route {
                             session: request.meta.session.clone(),
                             language: language_id.clone(),
+                            server_name: server_name.clone(),
                             root,
                         };
 
