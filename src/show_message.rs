@@ -34,14 +34,14 @@ pub fn show_message_request_respond(params: toml::Value, ctx: &mut Context) {
         MessageRequestResponse::deserialize(params).expect("Cannot parse message request response");
 
     let servers: Vec<_> = ctx.language_servers.keys().cloned().collect();
-    for language_id in &servers {
+    for server_name in &servers {
         let item = resp
             .item
             .clone()
             .and_then(|v| MessageActionItem::deserialize(v).ok())
             .map(|v| jsonrpc_core::to_value(v).expect("Cannot serialize item"))
             .unwrap_or(jsonrpc_core::Value::Null);
-        ctx.reply(language_id, resp.message_request_id.clone(), Ok(item));
+        ctx.reply(server_name, resp.message_request_id.clone(), Ok(item));
     }
 }
 
@@ -60,8 +60,8 @@ pub fn show_message_request_next(meta: EditorMeta, ctx: &mut Context) {
             show_message(meta, params.typ, &params.message, ctx);
 
             let servers: Vec<_> = ctx.language_servers.keys().cloned().collect();
-            for language_id in &servers {
-                ctx.reply(language_id, id.clone(), Ok(serde_json::Value::Null));
+            for server_name in &servers {
+                ctx.reply(server_name, id.clone(), Ok(serde_json::Value::Null));
             }
             return;
         }

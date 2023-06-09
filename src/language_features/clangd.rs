@@ -15,15 +15,15 @@ impl Request for SwitchSourceHeaderRequest {
 }
 
 pub fn switch_source_header(meta: EditorMeta, ctx: &mut Context) {
-    let (language_id, _) = meta
-        .language
+    let (server_name, _) = meta
+        .server
         .as_ref()
-        .and_then(|id| ctx.language_servers.get_key_value(id))
+        .and_then(|name| ctx.language_servers.get_key_value(name))
         .or_else(|| ctx.language_servers.first_key_value())
         .unwrap();
     let mut req_params = HashMap::new();
     req_params.insert(
-        language_id.clone(),
+        server_name.clone(),
         vec![TextDocumentIdentifier {
             uri: Url::from_file_path(&meta.buffile).unwrap(),
         }],

@@ -38,20 +38,21 @@ impl Request for NavigateRequest {
 
 pub fn navigate(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
     let params = KakouneNavigateParams::deserialize(params).unwrap();
-    let (language_id, server) = meta
-        .language
+    let (server_name, server_settings) = meta
+        .server
         .as_ref()
-        .and_then(|id| ctx.language_servers.get_key_value(id))
+        .and_then(|name| ctx.language_servers.get_key_value(name))
         .or_else(|| ctx.language_servers.first_key_value())
         .unwrap();
     let mut req_params = HashMap::new();
     req_params.insert(
-        language_id.clone(),
+        server_name.clone(),
         vec![NavigateParams {
             text_document: TextDocumentIdentifier {
                 uri: Url::from_file_path(&meta.buffile).unwrap(),
             },
-            position: get_lsp_position(server, &meta.buffile, &params.position, ctx).unwrap(),
+            position: get_lsp_position(server_settings, &meta.buffile, &params.position, ctx)
+                .unwrap(),
             direction: params.direction,
         }],
     );
@@ -88,30 +89,31 @@ impl Request for VarsRequest {
 
 pub fn vars(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
     let params = PositionParams::deserialize(params).unwrap();
-    let (language_id, srv_settings) = meta
-        .language
+    let (server_name, server_settings) = meta
+        .server
         .as_ref()
-        .and_then(|id| ctx.language_servers.get_key_value(id))
+        .and_then(|name| ctx.language_servers.get_key_value(name))
         .or_else(|| ctx.language_servers.first_key_value())
         .unwrap();
     let mut req_params = HashMap::new();
     req_params.insert(
-        language_id.clone(),
+        server_name.clone(),
         vec![VarsParams {
             text_document: TextDocumentIdentifier {
                 uri: Url::from_file_path(&meta.buffile).unwrap(),
             },
-            position: get_lsp_position(srv_settings, &meta.buffile, &params.position, ctx).unwrap(),
+            position: get_lsp_position(server_settings, &meta.buffile, &params.position, ctx)
+                .unwrap(),
         }],
     );
     ctx.call::<VarsRequest, _>(
         meta,
         RequestParams::Each(req_params),
         move |ctx: &mut Context, meta, results| {
-            if let Some((language_id, result)) = results.into_iter().find(|(_, v)| v.is_some()) {
+            if let Some((server_name, result)) = results.into_iter().find(|(_, v)| v.is_some()) {
                 goto::goto(
                     meta,
-                    (language_id, result.map(GotoDefinitionResponse::Array)),
+                    (server_name, result.map(GotoDefinitionResponse::Array)),
                     ctx,
                 );
             }
@@ -147,20 +149,21 @@ impl Request for InheritanceRequest {
 
 pub fn inheritance(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
     let params = KakouneInheritanceParams::deserialize(params).unwrap();
-    let (language_id, srv_settings) = meta
-        .language
+    let (server_name, server_settings) = meta
+        .server
         .as_ref()
-        .and_then(|id| ctx.language_servers.get_key_value(id))
+        .and_then(|name| ctx.language_servers.get_key_value(name))
         .or_else(|| ctx.language_servers.first_key_value())
         .unwrap();
     let mut req_params = HashMap::new();
     req_params.insert(
-        language_id.clone(),
+        server_name.clone(),
         vec![InheritanceParams {
             text_document: TextDocumentIdentifier {
                 uri: Url::from_file_path(&meta.buffile).unwrap(),
             },
-            position: get_lsp_position(srv_settings, &meta.buffile, &params.position, ctx).unwrap(),
+            position: get_lsp_position(server_settings, &meta.buffile, &params.position, ctx)
+                .unwrap(),
             levels: params.levels,
             derived: params.derived,
         }],
@@ -169,10 +172,10 @@ pub fn inheritance(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
         meta,
         RequestParams::Each(req_params),
         move |ctx, meta, results| {
-            if let Some((language_id, result)) = results.into_iter().find(|(_, v)| v.is_some()) {
+            if let Some((server_name, result)) = results.into_iter().find(|(_, v)| v.is_some()) {
                 goto::goto(
                     meta,
-                    (language_id, result.map(GotoDefinitionResponse::Array)),
+                    (server_name, result.map(GotoDefinitionResponse::Array)),
                     ctx,
                 );
             }
@@ -206,20 +209,21 @@ impl Request for CallRequest {
 
 pub fn call(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
     let params = KakouneCallParams::deserialize(params).unwrap();
-    let (language_id, srv_settings) = meta
-        .language
+    let (server_name, server_settings) = meta
+        .server
         .as_ref()
-        .and_then(|id| ctx.language_servers.get_key_value(id))
+        .and_then(|name| ctx.language_servers.get_key_value(name))
         .or_else(|| ctx.language_servers.first_key_value())
         .unwrap();
     let mut req_params = HashMap::new();
     req_params.insert(
-        language_id.clone(),
+        server_name.clone(),
         vec![CallParams {
             text_document: TextDocumentIdentifier {
                 uri: Url::from_file_path(&meta.buffile).unwrap(),
             },
-            position: get_lsp_position(srv_settings, &meta.buffile, &params.position, ctx).unwrap(),
+            position: get_lsp_position(server_settings, &meta.buffile, &params.position, ctx)
+                .unwrap(),
             callee: params.callee,
         }],
     );
@@ -227,10 +231,10 @@ pub fn call(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
         meta,
         RequestParams::Each(req_params),
         move |ctx, meta, results| {
-            if let Some((language_id, result)) = results.into_iter().find(|(_, v)| v.is_some()) {
+            if let Some((server_name, result)) = results.into_iter().find(|(_, v)| v.is_some()) {
                 goto::goto(
                     meta,
-                    (language_id, result.map(GotoDefinitionResponse::Array)),
+                    (server_name, result.map(GotoDefinitionResponse::Array)),
                     ctx,
                 );
             }
@@ -264,20 +268,21 @@ impl Request for MemberRequest {
 
 pub fn member(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
     let params = KakouneMemberParams::deserialize(params).unwrap();
-    let (language_id, srv_settings) = meta
-        .language
+    let (server_name, server_settings) = meta
+        .server
         .as_ref()
-        .and_then(|id| ctx.language_servers.get_key_value(id))
+        .and_then(|name| ctx.language_servers.get_key_value(name))
         .or_else(|| ctx.language_servers.first_key_value())
         .unwrap();
     let mut req_params = HashMap::new();
     req_params.insert(
-        language_id.clone(),
+        server_name.clone(),
         vec![MemberParams {
             text_document: TextDocumentIdentifier {
                 uri: Url::from_file_path(&meta.buffile).unwrap(),
             },
-            position: get_lsp_position(srv_settings, &meta.buffile, &params.position, ctx).unwrap(),
+            position: get_lsp_position(server_settings, &meta.buffile, &params.position, ctx)
+                .unwrap(),
             kind: params.kind,
         }],
     );
@@ -285,10 +290,10 @@ pub fn member(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
         meta,
         RequestParams::Each(req_params),
         move |ctx, meta, results| {
-            if let Some((language_id, result)) = results.into_iter().find(|(_, v)| v.is_some()) {
+            if let Some((server_name, result)) = results.into_iter().find(|(_, v)| v.is_some()) {
                 goto::goto(
                     meta,
-                    (language_id, result.map(GotoDefinitionResponse::Array)),
+                    (server_name, result.map(GotoDefinitionResponse::Array)),
                     ctx,
                 )
             }
@@ -458,10 +463,10 @@ pub fn publish_semantic_highlighting(params: Params, ctx: &mut Context) {
         Some(meta) => meta,
         None => return,
     };
-    let (_, srv_settings) = meta
-        .language
+    let (_, server) = meta
+        .server
         .as_ref()
-        .and_then(|id| ctx.language_servers.get_key_value(id))
+        .and_then(|name| ctx.language_servers.get_key_value(name))
         .or_else(|| ctx.language_servers.first_key_value())
         .unwrap();
     let ranges = params
@@ -469,7 +474,7 @@ pub fn publish_semantic_highlighting(params: Params, ctx: &mut Context) {
         .iter()
         .flat_map(|x| {
             let face = x.get_face();
-            let offset_encoding = srv_settings.offset_encoding;
+            let offset_encoding = server.offset_encoding;
             x.ls_ranges.iter().filter_map(move |r| {
                 if face.is_empty() {
                     warn!("No face found for {:?}", x);

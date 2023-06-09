@@ -38,15 +38,15 @@ pub fn text_document_hover(meta: EditorMeta, params: EditorParams, ctx: &mut Con
     let (range, cursor) = parse_kakoune_range(&params.selection_desc);
     let req_params = eligible_servers
         .into_iter()
-        .map(|(language_id, srv_settings)| {
+        .map(|(server_name, server_settings)| {
             (
-                language_id.clone(),
+                server_name.clone(),
                 vec![HoverParams {
                     text_document_position_params: TextDocumentPositionParams {
                         text_document: TextDocumentIdentifier {
                             uri: Url::from_file_path(&meta.buffile).unwrap(),
                         },
-                        position: get_lsp_position(srv_settings, &meta.buffile, &cursor, ctx)
+                        position: get_lsp_position(server_settings, &meta.buffile, &cursor, ctx)
                             .unwrap(),
                     },
                     work_done_progress_params: Default::default(),
@@ -77,16 +77,16 @@ pub fn editor_hover(
     cursor: KakounePosition,
     range: KakouneRange,
     tabstop: usize,
-    results: Vec<(LanguageId, Option<Hover>)>,
+    results: Vec<(ServerName, Option<Hover>)>,
     ctx: &mut Context,
 ) {
     let doc = &ctx.documents[&meta.buffile];
     let lsp_ranges: HashMap<_, _> = results
         .iter()
-        .map(|(language_id, _)| {
-            let offset_encoding = ctx.language_servers[language_id].offset_encoding;
+        .map(|(server_name, _)| {
+            let offset_encoding = ctx.language_servers[server_name].offset_encoding;
             (
-                language_id,
+                server_name,
                 kakoune_range_to_lsp(&range, &doc.text, offset_encoding),
             )
         })
@@ -96,29 +96,24 @@ pub fn editor_hover(
     let diagnostics = diagnostics
         .map(|x| {
             x.iter()
-                .filter(|(language_id, x)| {
+                .filter(|(server_name, x)| {
                     lsp_ranges
-                        .get(language_id)
+                        .get(server_name)
                         .filter(|lsp_range| ranges_touch_same_line(x.range, **lsp_range))
                         .is_some()
                 })
                 .filter(|(_, x)| !x.message.is_empty())
-                .map(|(language_id, x)| {
-                    let srv_settings = &ctx.language_servers[language_id];
+                .map(|(server_name, x)| {
+                    let server = &ctx.language_servers[server_name];
                     // Indent line breaks to the same level as the bullet point
                     let message = (x.message.trim().to_string()
-                        + &format_related_information(
-                            x,
-                            (language_id, srv_settings),
-                            srv_settings,
-                            ctx,
-                        )
-                        .map(|s| "\n  ".to_string() + &s)
-                        .unwrap_or_default())
+                        + &format_related_information(x, (server_name, server), server, ctx)
+                            .map(|s| "\n  ".to_string() + &s)
+                            .unwrap_or_default())
                         .replace('\n', "\n  ");
                     if for_hover_buffer {
                         // We are typically creating Markdown, so use a standard Markdown enumerator.
-                        return format!("* [{language_id}] {message}");
+                        return format!("* [{server_name}] {message}");
                     }
 
                     let face = x
@@ -136,7 +131,7 @@ pub fn editor_hover(
                         .unwrap_or(FACE_INFO_DEFAULT);
 
                     format!(
-                        "• [{language_id}] {{{face}}}{}{{{FACE_INFO_DEFAULT}}}",
+                        "• [{server_name}] {{{face}}}{}{{{FACE_INFO_DEFAULT}}}",
                         escape_kakoune_markup(&message),
                     )
                 })
@@ -150,29 +145,29 @@ pub fn editor_hover(
         .map(|lenses| {
             lenses
                 .iter()
-                .filter(|(language_id, lens)| {
+                .filter(|(server_name, lens)| {
                     lsp_ranges
-                        .get(language_id)
+                        .get(server_name)
                         .filter(|lsp_range| ranges_touch_same_line(lens.range, **lsp_range))
                         .is_some()
                 })
-                .map(|(language_id, lens)| {
+                .map(|(server_name, lens)| {
                     (
-                        language_id,
+                        server_name,
                         lens.command
                             .as_ref()
                             .map(|cmd| cmd.title.as_str())
                             .unwrap_or("(unresolved)"),
                     )
                 })
-                .map(|(language_id, title)| {
+                .map(|(server_name, title)| {
                     if for_hover_buffer {
                         // We are typically creating Markdown, so use a standard Markdown enumerator.
                         return format!("* {}", &title);
                     }
                     format!(
                         "• ({}) {{{}}}{}{{{}}}",
-                        language_id,
+                        server_name,
                         FACE_INFO_DIAGNOSTIC_HINT,
                         escape_kakoune_markup(title),
                         FACE_INFO_DEFAULT,

@@ -22,9 +22,9 @@ pub fn text_document_range_formatting(meta: EditorMeta, params: EditorParams, ct
 
     let req_params = eligible_servers
         .into_iter()
-        .map(|(language_id, _)| {
+        .map(|(server_name, _)| {
             (
-                language_id.clone(),
+                server_name.clone(),
                 params
                     .ranges
                     .iter()
@@ -71,18 +71,18 @@ pub fn text_document_range_formatting(meta: EditorMeta, params: EditorParams, ct
 
 pub fn editor_range_formatting<T: TextEditish<T>>(
     meta: EditorMeta,
-    result: (LanguageId, Vec<T>),
+    result: (ServerName, Vec<T>),
     ctx: &mut Context,
 ) {
-    let (language_id, text_edits) = result;
-    let srv_settings = &ctx.language_servers[&language_id];
+    let (server_name, text_edits) = result;
+    let server = &ctx.language_servers[&server_name];
     let cmd = ctx.documents.get(&meta.buffile).and_then(|document| {
         apply_text_edits_to_buffer(
             &meta.client,
             None,
             text_edits,
             &document.text,
-            srv_settings.offset_encoding,
+            server.offset_encoding,
             false,
         )
     });

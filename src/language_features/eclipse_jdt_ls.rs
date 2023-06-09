@@ -11,14 +11,14 @@ pub fn organize_imports(meta: EditorMeta, ctx: &mut Context) {
 
     let file_uri: String = file_uri.into();
     let mut req_params = HashMap::new();
-    let (language_id, _) = meta
-        .language
+    let (server_name, _) = meta
+        .server
         .as_ref()
-        .and_then(|id| ctx.language_servers.get_key_value(id))
+        .and_then(|name| ctx.language_servers.get_key_value(name))
         .or_else(|| ctx.language_servers.first_key_value())
         .unwrap();
     req_params.insert(
-        language_id.clone(),
+        server_name.clone(),
         vec![ExecuteCommandParams {
             command: "java.edit.organizeImports".to_string(),
             arguments: vec![serde_json::json!(file_uri)],

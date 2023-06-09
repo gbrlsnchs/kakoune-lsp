@@ -24,9 +24,9 @@ pub fn text_document_signature_help(meta: EditorMeta, params: EditorParams, ctx:
     let params = PositionParams::deserialize(params).unwrap();
     let req_params = eligible_servers
         .into_iter()
-        .map(|(language_id, srv_settings)| {
+        .map(|(server_name, server_settings)| {
             (
-                language_id.clone(),
+                server_name.clone(),
                 vec![SignatureHelpParams {
                     context: None,
                     text_document_position_params: TextDocumentPositionParams {
@@ -34,7 +34,7 @@ pub fn text_document_signature_help(meta: EditorMeta, params: EditorParams, ctx:
                             uri: Url::from_file_path(&meta.buffile).unwrap(),
                         },
                         position: get_lsp_position(
-                            srv_settings,
+                            server_settings,
                             &meta.buffile,
                             &params.position,
                             ctx,
@@ -60,10 +60,10 @@ pub fn text_document_signature_help(meta: EditorMeta, params: EditorParams, ctx:
 fn editor_signature_help(
     meta: EditorMeta,
     params: PositionParams,
-    result: (LanguageId, Option<SignatureHelp>),
+    result: (ServerName, Option<SignatureHelp>),
     ctx: &mut Context,
 ) {
-    let (language_id, result) = result;
+    let (server_name, result) = result;
     let result = match result {
         Some(result) => result,
         None => return,
@@ -76,7 +76,7 @@ fn editor_signature_help(
         None => return,
     };
 
-    let srv_settings = &ctx.language_servers[&language_id];
+    let server = &ctx.language_servers[&server_name];
     let active_parameter = active_signature
         .active_parameter
         .or(result.active_parameter)
@@ -96,13 +96,13 @@ fn editor_signature_help(
             let begin = lsp_character_to_byte_offset(
                 label.slice(..),
                 offsets[0] as usize,
-                srv_settings.offset_encoding,
+                server.offset_encoding,
             )
             .unwrap();
             let end = lsp_character_to_byte_offset(
                 label.slice(..),
                 offsets[1] as usize,
-                srv_settings.offset_encoding,
+                server.offset_encoding,
             )
             .unwrap();
             Some([begin, end])

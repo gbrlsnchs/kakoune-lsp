@@ -36,6 +36,7 @@ use serde::Serialize;
 pub fn start(
     to_editor: Sender<EditorResponse>,
     from_editor: Receiver<EditorRequest>,
+    language_id: &LanguageId,
     routes: &[Route],
     initial_request: EditorRequest,
     config: Config,
@@ -44,34 +45,41 @@ pub fn start(
     for route in routes {
         {
             // should be fine to unwrap because request was already routed which means language is configured
-            let lang = &config.language[&route.language];
-            let lang_srv =
-                match language_server_transport::start(&lang.command, &lang.args, &lang.envs) {
-                    Ok(ls) => ls,
-                    Err(err) => {
-                        error!("failed to start language server: {}", err);
-                        // If the server command isn't from a hook (e.g. auto-hover),
-                        // then send a prominent error to the editor.
-                        if !initial_request.meta.hook {
-                            let command = format!(
-                                "lsp-show-error {}",
-                                editor_quote(&format!("failed to start language server: {}", err)),
-                            );
-                            if to_editor
-                                .send(EditorResponse {
-                                    meta: initial_request.meta,
-                                    command: Cow::from(command),
-                                })
-                                .is_err()
-                            {
-                                error!("Failed to send command to editor");
-                            }
+            let language = &config.language[language_id];
+            let server_config = &language[&route.server_name];
+            let server_transport = match language_server_transport::start(
+                &server_config.command,
+                &server_config.args,
+                &server_config.envs,
+            ) {
+                Ok(ls) => ls,
+                Err(err) => {
+                    error!("failed to start language server: {}", err);
+                    // If the server command isn't from a hook (e.g. auto-hover),
+                    // then send a prominent error to the editor.
+                    if !initial_request.meta.hook {
+                        let command = format!(
+                            "lsp-show-error {}",
+                            editor_quote(&format!("failed to start language server: {}", err)),
+                        );
+                        if to_editor
+                            .send(EditorResponse {
+                                meta: initial_request.meta,
+                                command: Cow::from(command),
+                            })
+                            .is_err()
+                        {
+                            error!("Failed to send command to editor");
                         }
-                        return;
                     }
-                };
+                    return;
+                }
+            };
 
-            language_servers.insert(&route.language, (lang_srv, lang.offset_encoding));
+            language_servers.insert(
+                &route.server_name,
+                (server_transport, server_config.offset_encoding),
+            );
         }
     }
 
@@ -84,14 +92,15 @@ pub fn start(
         initial_request,
         editor_tx: to_editor,
         config,
+        language_id: language_id.clone(),
         language_servers: routes
             .iter()
             .map(|route| {
-                let (tx, offset_encoding) = &language_servers[&route.language];
-                let tx = tx.to_lang_server.sender().clone();
+                let (transport, offset_encoding) = &language_servers[&route.server_name];
+                let tx = transport.to_lang_server.sender().clone();
 
                 (
-                    route.language.clone(),
+                    route.server_name.clone(),
                     ServerSettings {
                         root_path: route.root.clone(),
                         offset_encoding: offset_encoding.unwrap_or_default(),
@@ -134,13 +143,13 @@ pub fn start(
             .unwrap_or_else(never);
 
         let mut sel = Select::new();
-        let srv_rxs: Vec<&Receiver<ServerMessage>> = language_servers
+        let server_rxs: Vec<&Receiver<ServerMessage>> = language_servers
             .values()
-            .map(|(srv, _)| srv.from_lang_server.receiver())
+            .map(|(transport, _)| transport.from_lang_server.receiver())
             .collect();
         // Server receivers are registered first so we can match their order
         // with servers in the context.
-        for rx in &srv_rxs {
+        for rx in &server_rxs {
             sel.recv(rx);
         }
         let from_editor_op = sel.recv(&from_editor);
@@ -163,7 +172,7 @@ pub fn start(
                 let parked: Vec<_> = ctx
                     .language_servers
                     .iter()
-                    .filter(|(_, srv)| srv.capabilities.is_none())
+                    .filter(|(_, server)| server.capabilities.is_none())
                     .collect();
                 if parked.is_empty() {
                     dispatch_incoming_editor_request(msg, &mut ctx);
@@ -174,7 +183,7 @@ pub fn start(
                         servers
                     );
                     let err =
-                        "lsp-show-error 'language servers are still not initialized, parking request'";
+                        format!("lsp-show-error 'language servers {} are still not initialized, parking request'", servers);
                     match &*msg.method {
                         notification::DidOpenTextDocument::METHOD => (),
                         notification::DidChangeTextDocument::METHOD => (),
@@ -182,7 +191,7 @@ pub fn start(
                         notification::DidSaveTextDocument::METHOD => (),
                         _ => {
                             if !msg.meta.hook {
-                                ctx.exec(msg.meta.clone(), err.to_string());
+                                ctx.exec(msg.meta.clone(), err);
                             }
                         }
                     }
@@ -211,9 +220,9 @@ pub fn start(
                 if !fw.pending_file_events.is_empty() {
                     let file_events: Vec<_> = fw.pending_file_events.drain().collect();
                     let servers: Vec<_> = ctx.language_servers.keys().cloned().collect();
-                    for language_id in &servers {
+                    for server_name in &servers {
                         workspace_did_change_watched_files(
-                            &language_id,
+                            &server_name,
                             file_events.clone(),
                             &mut ctx,
                         );
@@ -222,8 +231,8 @@ pub fn start(
                 }
             }
             i => {
-                let msg = op.recv(&srv_rxs[i]);
-                let language_id = ctx
+                let msg = op.recv(&server_rxs[i]);
+                let server_name = ctx
                     .language_servers
                     .iter()
                     .nth(i)
@@ -238,7 +247,7 @@ pub fn start(
                     ServerMessage::Request(call) => match call {
                         Call::MethodCall(request) => {
                             dispatch_server_request(
-                                &language_id,
+                                &server_name,
                                 initial_request_meta.clone(),
                                 request,
                                 &mut ctx,
@@ -246,7 +255,7 @@ pub fn start(
                         }
                         Call::Notification(notification) => {
                             dispatch_server_notification(
-                                &language_id,
+                                &server_name,
                                 initial_request_meta.clone(),
                                 &notification.method,
                                 notification.params,
@@ -267,7 +276,7 @@ pub fn start(
                                         continue;
                                     }
                                     remove_outstanding_request(
-                                        &language_id,
+                                        &server_name,
                                         &mut ctx,
                                         method,
                                         meta.buffile.clone(),
@@ -282,7 +291,7 @@ pub fn start(
                                         ctx.batches.remove(&batch_id)
                                     {
                                         if let Some(batch_seq) = ctx.batch_sizes.remove(&batch_id) {
-                                            vals.push((language_id.clone(), success.result));
+                                            vals.push((server_name.clone(), success.result));
                                             let batch_size = batch_seq.values().sum();
 
                                             if vals.len() >= batch_size {
@@ -304,7 +313,7 @@ pub fn start(
                                         continue;
                                     }
                                     remove_outstanding_request(
-                                        &language_id,
+                                        &server_name,
                                         &mut ctx,
                                         method,
                                         meta.buffile.clone(),
@@ -313,7 +322,7 @@ pub fn start(
                                     );
                                     error!(
                                         "Error response from server {}: {:?}",
-                                        language_id, failure
+                                        server_name, failure
                                     );
                                     if meta.write_response_to_fifo {
                                         write_response_to_fifo(meta, failure);
@@ -323,7 +332,7 @@ pub fn start(
                                         if let Some(mut batch_seq) =
                                             ctx.batch_sizes.remove(&batch_id)
                                         {
-                                            batch_seq.remove(&language_id);
+                                            batch_seq.remove(&server_name);
 
                                             // We con only keep going if there are still other servers to respond.
                                             // Otherwise, skip the following block and handle failure.
@@ -332,7 +341,7 @@ pub fn start(
                                                 // working ones to still be handled.
                                                 let vals: Vec<_> = vals
                                                     .into_iter()
-                                                    .filter(|(id, _)| *id != language_id)
+                                                    .filter(|(name, _)| *name != server_name)
                                                     .collect();
 
                                                 // Scenario: this failing server is holding back the response handling
@@ -364,11 +373,11 @@ pub fn start(
                                             let msg = match code {
                                                 ErrorCode::MethodNotFound => format!(
                                                     "{} language server doesn't support method {}",
-                                                    language_id, method
+                                                    server_name, method
                                                 ),
                                                 _ => format!(
                                                     "{} language server error: {}",
-                                                    language_id,
+                                                    server_name,
                                                     editor_quote(&failure.error.message)
                                                 ),
                                             };
@@ -381,7 +390,7 @@ pub fn start(
                                 } else {
                                     error!(
                                         "Error response from server {}: {:?}",
-                                        language_id, failure
+                                        server_name, failure
                                     );
                                     error!("Id {:?} is not in waitlist!", failure.id);
                                 }
@@ -561,8 +570,8 @@ fn dispatch_editor_request(request: EditorRequest, ctx: &mut Context) {
         }
         notification::Exit::METHOD => {
             let servers: Vec<_> = ctx.language_servers.keys().cloned().collect();
-            for language_id in &servers {
-                ctx.notify::<notification::Exit>(language_id, ());
+            for server_name in &servers {
+                ctx.notify::<notification::Exit>(server_name, ());
             }
         }
 
@@ -613,8 +622,8 @@ fn dispatch_editor_request(request: EditorRequest, ctx: &mut Context) {
         }
         "apply-workspace-edit" => {
             let servers: Vec<_> = ctx.language_servers.keys().cloned().collect();
-            if let Some(language_id) = servers.first() {
-                workspace::apply_edit_from_editor(language_id, meta, params, ctx);
+            if let Some(server_name) = servers.first() {
+                workspace::apply_edit_from_editor(server_name, meta, params, ctx);
             }
         }
         request::SemanticTokensFullRequest::METHOD => {
@@ -679,7 +688,7 @@ fn dispatch_editor_request(request: EditorRequest, ctx: &mut Context) {
 }
 
 fn dispatch_server_request(
-    language_id: &LanguageId,
+    server_name: &ServerName,
     meta: EditorMeta,
     request: MethodCall,
     ctx: &mut Context,
@@ -687,7 +696,7 @@ fn dispatch_server_request(
     let method: &str = &request.method;
     let result = match method {
         request::ApplyWorkspaceEdit::METHOD => {
-            workspace::apply_edit_from_server(language_id, request.params, ctx)
+            workspace::apply_edit_from_server(server_name, request.params, ctx)
         }
         request::RegisterCapability::METHOD => {
             let params: RegistrationParams = request
@@ -698,7 +707,7 @@ fn dispatch_server_request(
                 match registration.method.as_str() {
                     notification::DidChangeWatchedFiles::METHOD => {
                         register_workspace_did_change_watched_files(
-                            language_id,
+                            server_name,
                             registration.register_options,
                             ctx,
                         )
@@ -714,7 +723,7 @@ fn dispatch_server_request(
             Ok(serde_json::Value::Null)
         }
         request::WorkspaceFoldersRequest::METHOD => {
-            let server = &ctx.language_servers[language_id];
+            let server = &ctx.language_servers[server_name];
             Ok(serde_json::to_value(vec![WorkspaceFolder {
                 uri: Url::from_file_path(&server.root_path).unwrap(),
                 name: server.root_path.to_string(),
@@ -726,7 +735,7 @@ fn dispatch_server_request(
             progress::work_done_progress_create(request.params, ctx)
         }
         request::WorkspaceConfiguration::METHOD => {
-            workspace::configuration(request.params, language_id, ctx)
+            workspace::configuration(request.params, server_name, ctx)
         }
         request::ShowMessageRequest::METHOD => {
             return show_message::show_message_request(meta, request, ctx);
@@ -739,11 +748,11 @@ fn dispatch_server_request(
         }
     };
 
-    ctx.reply(language_id, request.id, result);
+    ctx.reply(server_name, request.id, result);
 }
 
 fn dispatch_server_notification(
-    language_id: &LanguageId,
+    server_name: &ServerName,
     meta: EditorMeta,
     method: &str,
     params: Params,
@@ -754,16 +763,16 @@ fn dispatch_server_notification(
             progress::dollar_progress(meta, params, ctx);
         }
         notification::PublishDiagnostics::METHOD => {
-            diagnostics::publish_diagnostics(language_id, params, ctx);
+            diagnostics::publish_diagnostics(server_name, params, ctx);
         }
         "$cquery/publishSemanticHighlighting" => {
-            cquery::publish_semantic_highlighting(language_id, params, ctx);
+            cquery::publish_semantic_highlighting(server_name, params, ctx);
         }
         "$ccls/publishSemanticHighlight" => {
             ccls::publish_semantic_highlighting(params, ctx);
         }
         notification::Exit::METHOD => {
-            debug!("{language_id} language server exited");
+            debug!("{server_name} language server exited");
         }
         notification::ShowMessage::METHOD => {
             let params: ShowMessageParams = params
@@ -779,7 +788,7 @@ fn dispatch_server_notification(
                 meta,
                 format!(
                     "lsp-show-message-log {} {}",
-                    editor_quote(language_id),
+                    editor_quote(server_name),
                     editor_quote(&params.message)
                 ),
             );

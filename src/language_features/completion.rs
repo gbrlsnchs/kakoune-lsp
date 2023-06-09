@@ -21,16 +21,16 @@ pub fn text_document_completion(meta: EditorMeta, params: EditorParams, ctx: &mu
     let req_params = ctx
         .language_servers
         .iter()
-        .map(|(language_id, srv_settings)| {
+        .map(|(server_name, server_settings)| {
             (
-                language_id.clone(),
+                server_name.clone(),
                 vec![CompletionParams {
                     text_document_position: TextDocumentPositionParams {
                         text_document: TextDocumentIdentifier {
                             uri: Url::from_file_path(&meta.buffile).unwrap(),
                         },
                         position: get_lsp_position(
-                            srv_settings,
+                            server_settings,
                             &meta.buffile,
                             &params.position,
                             ctx,
@@ -59,14 +59,14 @@ fn editor_completion(
 ) {
     let items = results
         .into_iter()
-        .flat_map(|(language_id, items)| {
+        .flat_map(|(server_name, items)| {
             let items = match items {
                 Some(CompletionResponse::Array(items)) => items,
                 Some(CompletionResponse::List(list)) => list.items,
                 None => vec![],
             };
 
-            items.into_iter().map(move |v| (language_id.clone(), v))
+            items.into_iter().map(move |v| (server_name.clone(), v))
         })
         .collect();
 
@@ -95,8 +95,8 @@ fn editor_completion(
     let items = items
         .iter()
         .enumerate()
-        .map(|(completion_item_index, (language_id, x))| {
-            let server = &ctx.language_servers[language_id];
+        .map(|(completion_item_index, (server_name, x))| {
+            let server = &ctx.language_servers[server_name];
             let maybe_resolve = if server
                 .capabilities
                 .as_ref()
@@ -325,21 +325,21 @@ pub fn completion_item_resolve(meta: EditorMeta, params: EditorParams, ctx: &mut
         return;
     }
 
-    let (language_id, item, detail, documentation) = if pager_active {
-        let (language_id, item) = &ctx.completion_items[completion_item_index as usize];
+    let (server_name, item, detail, documentation) = if pager_active {
+        let (server_name, item) = &ctx.completion_items[completion_item_index as usize];
         // Stop if there is nothing interesting to resolve.
         if item.detail.is_some() && item.documentation.is_some() {
             return;
         }
         (
-            language_id.clone(),
+            server_name.clone(),
             item.clone(),
             item.detail.clone(),
             item.documentation.clone(),
         )
     } else {
         // Since we're the only user of the completion items, we can clear them.
-        let (language_id, item) = ctx
+        let (server_name, item) = ctx
             .completion_items
             .drain(..)
             .nth(completion_item_index as usize)
@@ -349,25 +349,25 @@ pub fn completion_item_resolve(meta: EditorMeta, params: EditorParams, ctx: &mut
             Some(edits) if !edits.is_empty() => {
                 // Not sure if this case ever happens, the spec is unclear.
                 let uri = Url::from_file_path(&meta.buffile).unwrap();
-                apply_text_edits(&language_id, &meta, uri, edits, ctx);
+                apply_text_edits(&server_name, &meta, uri, edits, ctx);
                 return;
             }
             _ => (),
         }
 
-        (language_id, item, None, None)
+        (server_name, item, None, None)
     };
 
     let mut req_params = HashMap::new();
-    req_params.insert(language_id, vec![item]);
+    req_params.insert(server_name, vec![item]);
 
     ctx.call::<ResolveCompletionItem, _>(
         meta,
         RequestParams::Each(req_params),
         move |ctx, meta, results| {
-            if let Some((language_id, new_item)) = results.into_iter().nth(0) {
+            if let Some((server_name, new_item)) = results.into_iter().nth(0) {
                 editor_completion_item_resolve(
-                    &language_id,
+                    &server_name,
                     ctx,
                     meta,
                     pager_active,
@@ -381,7 +381,7 @@ pub fn completion_item_resolve(meta: EditorMeta, params: EditorParams, ctx: &mut
 }
 
 fn editor_completion_item_resolve(
-    language_id: &LanguageId,
+    server_name: &ServerName,
     ctx: &mut Context,
     meta: EditorMeta,
     pager_active: bool,
@@ -402,6 +402,6 @@ fn editor_completion_item_resolve(
         );
     } else if let Some(resolved_edits) = new_item.additional_text_edits {
         let uri = Url::from_file_path(&meta.buffile).unwrap();
-        apply_text_edits(language_id, &meta, uri, resolved_edits.clone(), ctx)
+        apply_text_edits(server_name, &meta, uri, resolved_edits.clone(), ctx)
     }
 }

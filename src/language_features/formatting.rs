@@ -20,9 +20,9 @@ pub fn text_document_formatting(meta: EditorMeta, params: EditorParams, ctx: &mu
         .expect("Params should follow FormattingOptions structure");
     let req_params = eligible_servers
         .into_iter()
-        .map(|(language_id, _)| {
+        .map(|(server_name, _)| {
             (
-                language_id.clone(),
+                server_name.clone(),
                 vec![DocumentFormattingParams {
                     text_document: TextDocumentIdentifier {
                         uri: Url::from_file_path(&meta.buffile).unwrap(),
@@ -37,11 +37,11 @@ pub fn text_document_formatting(meta: EditorMeta, params: EditorParams, ctx: &mu
         meta,
         RequestParams::Each(req_params),
         move |ctx, meta, results| {
-            if let Some((language_id, result)) = results.into_iter().find(|(_, v)| v.is_some()) {
+            if let Some((server_name, result)) = results.into_iter().find(|(_, v)| v.is_some()) {
                 let text_edits = result.unwrap_or_default();
                 super::range_formatting::editor_range_formatting(
                     meta,
-                    (language_id, text_edits),
+                    (server_name, text_edits),
                     ctx,
                 )
             }

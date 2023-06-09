@@ -135,32 +135,31 @@ impl Symbol<DocumentSymbol> for DocumentSymbol {
 
 fn editor_document_symbol(
     meta: EditorMeta,
-    result: (LanguageId, Option<DocumentSymbolResponse>),
+    result: (ServerName, Option<DocumentSymbolResponse>),
     ctx: &mut Context,
 ) {
-    let (language_id, result) = result;
-    let srv_settings = &ctx.language_servers[&language_id];
+    let (server_name, result) = result;
+    let server = &ctx.language_servers[&server_name];
     let content = match result {
         Some(DocumentSymbolResponse::Flat(result)) => {
             if result.is_empty() {
                 return;
             }
-            format_symbol(result, true, &meta, srv_settings, ctx)
+            format_symbol(result, true, &meta, server, ctx)
         }
         Some(DocumentSymbolResponse::Nested(result)) => {
             if result.is_empty() {
                 return;
             }
-            format_symbol(result, true, &meta, srv_settings, ctx)
+            format_symbol(result, true, &meta, server, ctx)
         }
         None => {
             return;
         }
     };
-    let srv_settings = &ctx.language_servers[&language_id];
     let command = format!(
         "lsp-show-document-symbol {} {}",
-        editor_quote(&srv_settings.root_path),
+        editor_quote(&server.root_path),
         editor_quote(&content),
     );
     ctx.exec(meta, command);
@@ -172,14 +171,14 @@ pub fn format_symbol<T: Symbol<T>>(
     items: Vec<T>,
     align: bool,
     meta: &EditorMeta,
-    srv_settings: &ServerSettings,
+    server: &ServerSettings,
     ctx: &Context,
 ) -> String {
     fn format_symbol_at_depth<'a, T: Symbol<T>>(
         output: &mut Vec<(String, String, &'a str)>,
         items: &'a [T],
         meta: &EditorMeta,
-        srv_settings: &ServerSettings,
+        server: &ServerSettings,
         ctx: &Context,
         depth: usize,
     ) {
@@ -187,7 +186,7 @@ pub fn format_symbol<T: Symbol<T>>(
             let mut filename_path = PathBuf::default();
             let filename = symbol_filename(meta, symbol, &mut filename_path);
             let position = get_kakoune_position_with_fallback(
-                srv_settings,
+                server,
                 filename,
                 symbol.selection_range().start,
                 ctx,
@@ -196,25 +195,18 @@ pub fn format_symbol<T: Symbol<T>>(
                 format!(
                     "{}{}:{}:{}:",
                     "  ".repeat(depth),
-                    short_file_path(filename, &srv_settings.root_path),
+                    short_file_path(filename, &server.root_path),
                     position.line,
                     position.column,
                 ),
                 format!("{:?}", symbol.kind()),
                 symbol.name(),
             ));
-            format_symbol_at_depth(
-                output,
-                symbol.children(),
-                meta,
-                srv_settings,
-                ctx,
-                depth + 1,
-            )
+            format_symbol_at_depth(output, symbol.children(), meta, server, ctx, depth + 1)
         }
     }
     let mut columns = vec![];
-    format_symbol_at_depth(&mut columns, &items, meta, srv_settings, ctx, 0);
+    format_symbol_at_depth(&mut columns, &items, meta, server, ctx, 0);
     if align {
         let Some(width1) = columns.iter().map(|(position, _, _)|
             UnicodeWidthStr::width(position.as_str())
@@ -279,10 +271,10 @@ fn symbol_kind_from_string(value: &str) -> Option<SymbolKind> {
 fn editor_next_or_prev_symbol(
     meta: EditorMeta,
     editor_params: EditorParams,
-    result: (LanguageId, Option<DocumentSymbolResponse>),
+    result: (ServerName, Option<DocumentSymbolResponse>),
     ctx: &mut Context,
 ) {
-    let (language_id, result) = result;
+    let (server_name, result) = result;
     let params = NextOrPrevSymbolParams::deserialize(editor_params).unwrap();
     let hover = params.hover;
 
@@ -292,25 +284,38 @@ fn editor_next_or_prev_symbol(
         .map(|kind_str| symbol_kind_from_string(kind_str).unwrap())
         .collect::<Vec<_>>();
 
-    let srv_settings = &ctx.language_servers[&language_id];
-    let srv = (&language_id, srv_settings);
+    let server = &ctx.language_servers[&server_name];
     let maybe_details = match result {
         None => return,
         Some(DocumentSymbolResponse::Flat(mut result)) => {
             if result.is_empty() {
                 return;
             }
-            next_or_prev_symbol_details(&mut result, &params, &symbol_kinds_query, &meta, srv, ctx)
+            next_or_prev_symbol_details(
+                &mut result,
+                &params,
+                &symbol_kinds_query,
+                &meta,
+                (&server_name, server),
+                ctx,
+            )
         }
         Some(DocumentSymbolResponse::Nested(mut result)) => {
             if result.is_empty() {
                 return;
             }
-            next_or_prev_symbol_details(&mut result, &params, &symbol_kinds_query, &meta, srv, ctx)
+            next_or_prev_symbol_details(
+                &mut result,
+                &params,
+                &symbol_kinds_query,
+                &meta,
+                (&server_name, server),
+                ctx,
+            )
         }
     };
 
-    editor_next_or_prev_for_details(&language_id, meta, ctx, maybe_details, hover);
+    editor_next_or_prev_for_details(&server_name, meta, ctx, maybe_details, hover);
 }
 
 /// Send the response back to Kakoune. This could be either:
@@ -318,7 +323,7 @@ fn editor_next_or_prev_symbol(
 /// b) Instructions to show hover information of the next/previous symbol (without actually
 /// moving the cursor just yet).
 fn editor_next_or_prev_for_details(
-    language_id: &LanguageId,
+    server_name: &ServerName,
     meta: EditorMeta,
     ctx: &mut Context,
     maybe_details: Option<(String, KakounePosition, String, SymbolKind)>,
@@ -338,7 +343,7 @@ fn editor_next_or_prev_for_details(
         }
     };
 
-    let server = &ctx.language_servers[language_id];
+    let server = &ctx.language_servers[server_name];
     if !hover {
         let path = Path::new(&filename);
         let filename_abs = if path.is_absolute() {
@@ -362,7 +367,7 @@ fn editor_next_or_prev_for_details(
 
     let mut req_params = HashMap::new();
     req_params.insert(
-        language_id.clone(),
+        server_name.clone(),
         vec![HoverParams {
             text_document_position_params: TextDocumentPositionParams {
                 text_document: TextDocumentIdentifier {
@@ -426,7 +431,7 @@ fn next_or_prev_symbol_details<T: Symbol<T> + 'static>(
     params: &NextOrPrevSymbolParams,
     symbol_kinds_query: &[SymbolKind],
     meta: &EditorMeta,
-    srv: (&LanguageId, &ServerSettings),
+    server: (&ServerName, &ServerSettings),
     ctx: &Context,
 ) -> Option<(String, KakounePosition, String, SymbolKind)> {
     // Some language servers return symbol locations that are not sorted in ascending order.
@@ -441,7 +446,7 @@ fn next_or_prev_symbol_details<T: Symbol<T> + 'static>(
     };
 
     let cursor = params.position;
-    let (language_id, srv_settings) = srv;
+    let (_, server_settings) = server;
 
     for symbol in it {
         let kind = symbol.kind();
@@ -454,12 +459,16 @@ fn next_or_prev_symbol_details<T: Symbol<T> + 'static>(
                 ctx,
                 &filename,
                 symbol_position,
-                unadorned_name(language_id, symbol.name()),
+                unadorned_name(&ctx.language_id, symbol.name()),
             )
             .unwrap_or(symbol_position);
         }
-        let symbol_position =
-            get_kakoune_position_with_fallback(srv_settings, &meta.buffile, symbol_position, ctx);
+        let symbol_position = get_kakoune_position_with_fallback(
+            server_settings,
+            &meta.buffile,
+            symbol_position,
+            ctx,
+        );
 
         let symbol_name = symbol.name().to_string();
 
@@ -479,7 +488,7 @@ fn next_or_prev_symbol_details<T: Symbol<T> + 'static>(
             params,
             symbol_kinds_query,
             meta,
-            srv,
+            server,
             ctx,
         ) {
             return Some(from_children);
@@ -591,10 +600,10 @@ pub fn object(meta: EditorMeta, editor_params: EditorParams, ctx: &mut Context) 
 fn editor_object(
     meta: EditorMeta,
     editor_params: EditorParams,
-    result: (LanguageId, Option<DocumentSymbolResponse>),
+    result: (ServerName, Option<DocumentSymbolResponse>),
     ctx: &mut Context,
 ) {
-    let (language_id, result) = result;
+    let (server_name, result) = result;
     let params = ObjectParams::deserialize(editor_params).unwrap();
 
     let selections: Vec<(KakouneRange, KakounePosition)> = params
@@ -621,14 +630,14 @@ fn editor_object(
             return;
         }
     };
-    let srv_settings = &ctx.language_servers[&language_id];
+    let server = &ctx.language_servers[&server_name];
     let mut ranges = match result {
         None => return,
         Some(DocumentSymbolResponse::Flat(symbols)) => {
-            flat_symbol_ranges(srv_settings, document, symbols, symbol_kinds_query)
+            flat_symbol_ranges(server, document, symbols, symbol_kinds_query)
         }
         Some(DocumentSymbolResponse::Nested(symbols)) => {
-            flat_symbol_ranges(srv_settings, document, symbols, symbol_kinds_query)
+            flat_symbol_ranges(server, document, symbols, symbol_kinds_query)
         }
     };
 
@@ -685,7 +694,7 @@ fn editor_object(
                     let matched_lsp_pos = kakoune_position_to_lsp(
                         &matched_pos,
                         &document.text,
-                        srv_settings.offset_encoding,
+                        server.offset_encoding,
                     );
                     let line = document.text.line(matched_lsp_pos.line as usize);
                     (matched_lsp_pos.character as usize) < line.len_chars()
@@ -751,7 +760,7 @@ fn editor_object(
 }
 
 fn flat_symbol_ranges<T: Symbol<T>>(
-    srv_settings: &ServerSettings,
+    server: &ServerSettings,
     document: &Document,
     symbols: Vec<T>,
     symbol_kinds_query: Vec<SymbolKind>,
@@ -776,8 +785,7 @@ fn flat_symbol_ranges<T: Symbol<T>>(
         }
     }
     let mut result = vec![];
-    let convert =
-        |range| lsp_range_to_kakoune(&range, &document.text, srv_settings.offset_encoding);
+    let convert = |range| lsp_range_to_kakoune(&range, &document.text, server.offset_encoding);
     for s in symbols {
         walk(&mut result, &symbol_kinds_query, &convert, &s);
     }
@@ -813,23 +821,23 @@ pub fn document_symbol_menu(meta: EditorMeta, editor_params: EditorParams, ctx: 
 
 fn editor_document_symbol_menu(
     meta: EditorMeta,
-    result: (LanguageId, Option<DocumentSymbolResponse>),
+    result: (ServerName, Option<DocumentSymbolResponse>),
     ctx: &mut Context,
 ) {
-    let (language_id, result) = result;
-    let srv_settings = &ctx.language_servers[&language_id];
+    let (server_name, result) = result;
+    let server = &ctx.language_servers[&server_name];
     let choices = match result {
         Some(DocumentSymbolResponse::Flat(result)) => {
             if result.is_empty() {
                 return;
             }
-            symbol_menu(result, &meta, srv_settings, ctx)
+            symbol_menu(result, &meta, server, ctx)
         }
         Some(DocumentSymbolResponse::Nested(result)) => {
             if result.is_empty() {
                 return;
             }
-            symbol_menu(result, &meta, srv_settings, ctx)
+            symbol_menu(result, &meta, server, ctx)
         }
         None => return,
     };
@@ -840,23 +848,23 @@ fn editor_document_symbol_menu(
 fn editor_document_symbol_goto(
     meta: EditorMeta,
     goto_symbol: String,
-    result: (LanguageId, Option<DocumentSymbolResponse>),
+    result: (ServerName, Option<DocumentSymbolResponse>),
     ctx: &mut Context,
 ) {
-    let (language_id, result) = result;
-    let srv_settings = &ctx.language_servers[&language_id];
+    let (server_name, result) = result;
+    let server = &ctx.language_servers[&server_name];
     let navigate_command = match result {
         Some(DocumentSymbolResponse::Flat(result)) => {
             if result.is_empty() {
                 return;
             }
-            symbol_search(result, goto_symbol, &meta, srv_settings, ctx)
+            symbol_search(result, goto_symbol, &meta, server, ctx)
         }
         Some(DocumentSymbolResponse::Nested(result)) => {
             if result.is_empty() {
                 return;
             }
-            symbol_search(result, goto_symbol, &meta, srv_settings, ctx)
+            symbol_search(result, goto_symbol, &meta, server, ctx)
         }
         None => return,
     };
@@ -886,7 +894,7 @@ where
 fn symbol_menu<T: Symbol<T>>(
     symbols: Vec<T>,
     meta: &EditorMeta,
-    srv_settings: &ServerSettings,
+    server: &ServerSettings,
     ctx: &Context,
 ) -> String {
     let mut menu_cmd = String::new();
@@ -894,7 +902,7 @@ fn symbol_menu<T: Symbol<T>>(
         let mut filename_path = PathBuf::default();
         let filename = symbol_filename(meta, symbol, &mut filename_path);
         let range =
-            get_kakoune_range_with_fallback(srv_settings, filename, &symbol.selection_range(), ctx);
+            get_kakoune_range_with_fallback(server, filename, &symbol.selection_range(), ctx);
         let name = symbol.name();
         write!(
             &mut menu_cmd,
@@ -915,7 +923,7 @@ fn symbol_search<T: Symbol<T>>(
     symbols: Vec<T>,
     goto_symbol: String,
     meta: &EditorMeta,
-    srv_settings: &ServerSettings,
+    server: &ServerSettings,
     ctx: &Context,
 ) -> String {
     let mut navigate_cmd = String::new();
@@ -923,12 +931,8 @@ fn symbol_search<T: Symbol<T>>(
         if symbol.name() == goto_symbol {
             let mut filename_path = PathBuf::default();
             let filename = symbol_filename(meta, symbol, &mut filename_path);
-            let range = get_kakoune_range_with_fallback(
-                srv_settings,
-                filename,
-                &symbol.selection_range(),
-                ctx,
-            );
+            let range =
+                get_kakoune_range_with_fallback(server, filename, &symbol.selection_range(), ctx);
             write!(
                 &mut navigate_cmd,
                 "evaluate-commands '{}'",

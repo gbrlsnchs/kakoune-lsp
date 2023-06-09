@@ -41,20 +41,21 @@ impl fmt::Display for ForwardSearchResult {
 
 pub fn forward_search(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
     let params = PositionParams::deserialize(params).unwrap();
-    let (language_id, srv_settings) = meta
-        .language
+    let (server_name, server_settings) = meta
+        .server
         .as_ref()
-        .and_then(|id| ctx.language_servers.get_key_value(id))
+        .and_then(|name| ctx.language_servers.get_key_value(name))
         .or_else(|| ctx.language_servers.first_key_value())
         .unwrap();
     let mut req_params = HashMap::new();
     req_params.insert(
-        language_id.clone(),
+        server_name.clone(),
         vec![TextDocumentPositionParams {
             text_document: TextDocumentIdentifier {
                 uri: Url::from_file_path(&meta.buffile).unwrap(),
             },
-            position: get_lsp_position(srv_settings, &meta.buffile, &params.position, ctx).unwrap(),
+            position: get_lsp_position(server_settings, &meta.buffile, &params.position, ctx)
+                .unwrap(),
         }],
     );
     ctx.call::<ForwardSearch, _>(
@@ -108,15 +109,15 @@ impl fmt::Display for BuildResult {
 }
 
 pub fn build(meta: EditorMeta, _params: EditorParams, ctx: &mut Context) {
-    let (language_id, _) = meta
-        .language
+    let (server_name, _) = meta
+        .server
         .as_ref()
-        .and_then(|id| ctx.language_servers.get_key_value(id))
+        .and_then(|name| ctx.language_servers.get_key_value(name))
         .or_else(|| ctx.language_servers.first_key_value())
         .unwrap();
     let mut req_params = HashMap::new();
     req_params.insert(
-        language_id.clone(),
+        server_name.clone(),
         vec![BuildTextDocumentParams {
             text_document: TextDocumentIdentifier {
                 uri: Url::from_file_path(&meta.buffile).unwrap(),

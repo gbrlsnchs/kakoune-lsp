@@ -2,7 +2,7 @@ use crate::capabilities::{attempt_server_capability, CAPABILITY_DOCUMENT_HIGHLIG
 use crate::context::{Context, RequestParams};
 use crate::position::*;
 use crate::types::{
-    EditorMeta, EditorParams, KakounePosition, KakouneRange, LanguageId, PositionParams,
+    EditorMeta, EditorParams, KakounePosition, KakouneRange, PositionParams, ServerName,
 };
 use crate::util::editor_quote;
 use itertools::Itertools;
@@ -26,16 +26,16 @@ pub fn text_document_highlight(meta: EditorMeta, params: EditorParams, ctx: &mut
     let params = PositionParams::deserialize(params).unwrap();
     let req_params = eligible_servers
         .into_iter()
-        .map(|(language_id, srv_settings)| {
+        .map(|(server_name, server_settings)| {
             (
-                language_id.clone(),
+                server_name.clone(),
                 vec![DocumentHighlightParams {
                     text_document_position_params: TextDocumentPositionParams {
                         text_document: TextDocumentIdentifier {
                             uri: Url::from_file_path(&meta.buffile).unwrap(),
                         },
                         position: get_lsp_position(
-                            srv_settings,
+                            server_settings,
                             &meta.buffile,
                             &params.position,
                             ctx,
@@ -61,27 +61,24 @@ pub fn text_document_highlight(meta: EditorMeta, params: EditorParams, ctx: &mut
 
 fn editor_document_highlight(
     meta: EditorMeta,
-    result: (LanguageId, Option<Vec<DocumentHighlight>>),
+    result: (ServerName, Option<Vec<DocumentHighlight>>),
     main_cursor: KakounePosition,
     ctx: &mut Context,
 ) {
-    let (language_id, result) = result;
+    let (server_name, result) = result;
     let document = ctx.documents.get(&meta.buffile);
     if document.is_none() {
         return;
     }
     let document = document.unwrap();
-    let srv_settings = &ctx.language_servers[&language_id];
+    let server = &ctx.language_servers[&server_name];
     let mut ranges = vec![];
     let range_specs = match result {
         Some(highlights) => highlights
             .into_iter()
             .map(|highlight| {
-                let range = lsp_range_to_kakoune(
-                    &highlight.range,
-                    &document.text,
-                    srv_settings.offset_encoding,
-                );
+                let range =
+                    lsp_range_to_kakoune(&highlight.range, &document.text, server.offset_encoding);
                 ranges.push(range);
                 format!(
                     "{}|{}",

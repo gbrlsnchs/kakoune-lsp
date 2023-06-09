@@ -34,7 +34,7 @@ impl Drop for ScopedThread {
 }
 
 impl ScopedThread {
-    pub fn spawn(name: &'static str, f: impl FnOnce() + Send + 'static) -> ScopedThread {
+    pub fn spawn<'a>(name: &'a str, f: impl FnOnce() + Send + 'static) -> ScopedThread {
         let inner = thread::Builder::new().name(name.into()).spawn(f).unwrap();
         ScopedThread { inner: Some(inner) }
     }
@@ -59,12 +59,13 @@ pub struct Worker<I, O> {
 }
 
 impl<I, O> Worker<I, O> {
-    pub fn spawn<F>(name: &'static str, buf: usize, f: F) -> Worker<I, O>
+    pub fn spawn<'a, F>(name: &'a str, buf: usize, f: F) -> Worker<I, O>
     where
         F: FnOnce(Receiver<I>, Sender<O>) + Send + 'static,
         I: Send + 'static,
         O: Send + 'static,
     {
+        debug!("spawning thread {:?}", name);
         // Set up worker channels in a deadlock-avoiding way. If one sets both input
         // and output buffers to a fixed size, a worker might get stuck.
         let (sender, input_receiver) = bounded::<I>(buf);

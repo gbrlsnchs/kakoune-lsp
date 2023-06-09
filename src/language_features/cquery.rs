@@ -1,6 +1,6 @@
 use crate::context::*;
 use crate::position::*;
-use crate::types::LanguageId;
+use crate::types::ServerName;
 use crate::util::*;
 use itertools::Itertools;
 use jsonrpc_core::Params;
@@ -155,7 +155,7 @@ pub struct PublishSemanticHighlightingParams {
     pub symbols: Vec<SemanticSymbol>,
 }
 
-pub fn publish_semantic_highlighting(language_id: &LanguageId, params: Params, ctx: &mut Context) {
+pub fn publish_semantic_highlighting(server_name: &ServerName, params: Params, ctx: &mut Context) {
     let params: PublishSemanticHighlightingParams =
         params.parse().expect("Failed to parse semhl params");
     let client = None;
@@ -172,7 +172,7 @@ pub fn publish_semantic_highlighting(language_id: &LanguageId, params: Params, c
         .iter()
         .flat_map(|x| {
             let face = x.get_face();
-            let server = &ctx.language_servers[language_id];
+            let server = &ctx.language_servers[server_name];
             let offset_encoding = server.offset_encoding;
             x.ranges.iter().filter_map(move |r| {
                 if face.is_empty() {

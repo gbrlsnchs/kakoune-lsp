@@ -1326,7 +1326,7 @@ buf_line_count = ${kak_buf_line_count}
 
 # CCLS Extension
 
-declare-option str lsp_ccls_language
+declare-option str lsp_ccls_server
 define-command ccls-navigate -docstring "Navigate C/C++/ObjectiveC file" -params 1 %{
     nop %sh{ (printf %s "
 session  = \"${kak_session}\"
@@ -1335,7 +1335,7 @@ buffile  = \"${kak_buffile}\"
 filetype = \"${kak_opt_filetype}\"
 version  = ${kak_timestamp:-0}
 method   = \"\$ccls/navigate\"
-$([ -z ${kak_opt_lsp_ccls_language} ] || echo language = \"${kak_opt_lsp_ccls_language}\")
+$([ -z ${kak_opt_lsp_ccls_server} ] || echo server = \"${kak_opt_lsp_ccls_server}\")
 $([ -z ${kak_hook_param+x} ] || echo hook = true)
 [params]
 direction = \"$1\"
@@ -1353,7 +1353,7 @@ buffile  = \"${kak_buffile}\"
 filetype = \"${kak_opt_filetype}\"
 version  = ${kak_timestamp:-0}
 method   = \"\$ccls/vars\"
-$([ -z ${kak_opt_lsp_ccls_language} ] || echo language = \"${kak_opt_lsp_ccls_language}\")
+$([ -z ${kak_opt_lsp_ccls_server} ] || echo server = \"${kak_opt_lsp_ccls_server}\")
 $([ -z ${kak_hook_param+x} ] || echo hook = true)
 [params.position]
 line     = ${kak_cursor_line}
@@ -1375,7 +1375,7 @@ buffile  = \"${kak_buffile}\"
 filetype = \"${kak_opt_filetype}\"
 version  = ${kak_timestamp:-0}
 method   = \"\$ccls/inheritance\"
-$([ -z ${kak_opt_lsp_ccls_language} ] || echo language = \"${kak_opt_lsp_ccls_language}\")
+$([ -z ${kak_opt_lsp_ccls_server} ] || echo server = \"${kak_opt_lsp_ccls_server}\")
 $([ -z ${kak_hook_param+x} ] || echo hook = true)
 [params]
 derived  = $derived
@@ -1399,7 +1399,7 @@ buffile  = \"${kak_buffile}\"
 filetype = \"${kak_opt_filetype}\"
 version  = ${kak_timestamp:-0}
 method   = \"\$ccls/call\"
-$([ -z ${kak_opt_lsp_ccls_language} ] || echo language = \"${kak_opt_lsp_ccls_language}\")
+$([ -z ${kak_opt_lsp_ccls_server} ] || echo server = \"${kak_opt_lsp_ccls_server}\")
 $([ -z ${kak_hook_param+x} ] || echo hook = true)
 [params]
 callee   = $callee
@@ -1424,7 +1424,7 @@ buffile  = \"${kak_buffile}\"
 filetype = \"${kak_opt_filetype}\"
 version  = ${kak_timestamp:-0}
 method   = \"\$ccls/member\"
-$([ -z ${kak_opt_lsp_ccls_language} ] || echo language = \"${kak_opt_lsp_ccls_language}\")
+$([ -z ${kak_opt_lsp_ccls_server} ] || echo server = \"${kak_opt_lsp_ccls_server}\")
 $([ -z ${kak_hook_param+x} ] || echo hook = true)
 [params]
 kind     = $kind
@@ -1436,7 +1436,7 @@ column   = ${kak_cursor_column}
 
 # clangd Extensions
 
-declare-option str lsp_clangd_language
+declare-option str lsp_clangd_server
 define-command clangd-switch-source-header -docstring "clangd-switch-source-header: Switch source/header." %{
     nop %sh{ (printf %s "
 session  = \"${kak_session}\"
@@ -1445,7 +1445,7 @@ buffile  = \"${kak_buffile}\"
 filetype = \"${kak_opt_filetype}\"
 version  = ${kak_timestamp:-0}
 method   = \"textDocument/switchSourceHeader\"
-$([ -z ${kak_opt_lsp_clangd_language} ] || echo language = \"${kak_opt_lsp_clangd_language}\")
+$([ -z ${kak_opt_lsp_clangd_server} ] || echo server = \"${kak_opt_lsp_clangd_server}\")
 $([ -z ${kak_hook_param+x} ] || echo hook = true)
 [params]
 " | eval "${kak_opt_lsp_cmd} --request") > /dev/null 2>&1 < /dev/null & }
@@ -1453,7 +1453,7 @@ $([ -z ${kak_hook_param+x} ] || echo hook = true)
 
 # eclipse.jdt.ls Extension
 
-declare-option str lsp_ejdtls_language
+declare-option str lsp_ejdtls_server
 define-command ejdtls-organize-imports -docstring "ejdtls-organize-imports: Organize imports." %{
     nop %sh{ (printf %s "
 session  = \"${kak_session}\"
@@ -1462,7 +1462,7 @@ buffile  = \"${kak_buffile}\"
 filetype = \"${kak_opt_filetype}\"
 version  = ${kak_timestamp:-0}
 method   = \"eclipse.jdt.ls/organizeImports\"
-$([ -z ${kak_opt_lsp_ejdtls_language} ] || echo language = \"${kak_opt_lsp_ejdtls_language}\")
+$([ -z ${kak_opt_lsp_ejdtls_server} ] || echo server = \"${kak_opt_lsp_ejdtls_server}\")
 $([ -z ${kak_hook_param+x} ] || echo hook = true)
 [params]
 " | eval "${kak_opt_lsp_cmd} --request") > /dev/null 2>&1 < /dev/null & }
@@ -1470,7 +1470,7 @@ $([ -z ${kak_hook_param+x} ] || echo hook = true)
 
 # rust-analyzer extensions
 
-declare-option str lsp_rust_analyzer_language
+declare-option str lsp_rust_analyzer_server
 define-command rust-analyzer-expand-macro -docstring "Expand macro recursively" %{
     nop %sh{ (printf %s "
 session  = \"${kak_session}\"
@@ -1479,7 +1479,7 @@ buffile  = \"${kak_buffile}\"
 filetype = \"${kak_opt_filetype}\"
 version  = ${kak_timestamp:-0}
 method   = \"rust-analyzer/expandMacro\"
-$([ -z ${kak_opt_lsp_rust_analyzer_language} ] || echo language = \"${kak_opt_lsp_rust_analyzer_language}\")
+$([ -z ${kak_opt_lsp_rust_analyzer_server} ] || echo server = \"${kak_opt_lsp_rust_analyzer_server}\")
 $([ -z ${kak_hook_param+x} ] || echo hook = true)
 [params.position]
 line     = ${kak_cursor_line}

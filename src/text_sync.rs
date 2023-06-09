@@ -25,17 +25,17 @@ pub fn text_document_did_open(meta: EditorMeta, params: EditorParams, ctx: &mut 
     };
     ctx.documents.insert(meta.buffile.clone(), document);
 
+    let params = DidOpenTextDocumentParams {
+        text_document: TextDocumentItem {
+            uri: Url::from_file_path(&meta.buffile).unwrap(),
+            language_id: ctx.language_id.clone(),
+            version: meta.version,
+            text: params.draft.clone(),
+        },
+    };
     let servers: Vec<_> = ctx.language_servers.keys().cloned().collect();
-    for language_id in &servers {
-        let params = DidOpenTextDocumentParams {
-            text_document: TextDocumentItem {
-                uri: Url::from_file_path(&meta.buffile).unwrap(),
-                language_id: language_id.clone(),
-                version: meta.version,
-                text: params.draft.clone(),
-            },
-        };
-        ctx.notify::<DidOpenTextDocument>(language_id, params);
+    for server_name in &servers {
+        ctx.notify::<DidOpenTextDocument>(server_name, params.clone());
     }
     text_document_code_lens(meta, ctx);
 }
@@ -74,8 +74,8 @@ pub fn text_document_did_change(meta: EditorMeta, params: EditorParams, ctx: &mu
         }],
     };
     let servers: Vec<_> = ctx.language_servers.keys().cloned().collect();
-    for language_id in &servers {
-        ctx.notify::<DidChangeTextDocument>(language_id, req_params.clone());
+    for server_name in &servers {
+        ctx.notify::<DidChangeTextDocument>(server_name, req_params.clone());
     }
     text_document_code_lens(meta, ctx);
 }
@@ -87,15 +87,15 @@ pub fn text_document_did_close(meta: EditorMeta, ctx: &mut Context) {
         text_document: TextDocumentIdentifier { uri },
     };
     let servers: Vec<_> = ctx.language_servers.keys().cloned().collect();
-    for language_id in &servers {
-        ctx.notify::<DidCloseTextDocument>(language_id, params.clone());
+    for server_name in &servers {
+        ctx.notify::<DidCloseTextDocument>(server_name, params.clone());
     }
 }
 
 pub fn text_document_did_save(meta: EditorMeta, ctx: &mut Context) {
     let servers: Vec<_> = ctx.language_servers.keys().cloned().collect();
-    for language_id in &servers {
-        let server = &ctx.language_servers[language_id];
+    for server_name in &servers {
+        let server = &ctx.language_servers[server_name];
         let text = match server.capabilities.as_ref().unwrap().text_document_sync {
             Some(TextDocumentSyncCapability::Options(TextDocumentSyncOptions {
                 save:
@@ -115,12 +115,12 @@ pub fn text_document_did_save(meta: EditorMeta, ctx: &mut Context) {
             text_document: TextDocumentIdentifier { uri },
             text,
         };
-        ctx.notify::<DidSaveTextDocument>(language_id, params);
+        ctx.notify::<DidSaveTextDocument>(server_name, params);
     }
 }
 
 pub fn spawn_file_watcher(
-    watch_requests: HashMap<(LanguageId, String, Option<PathBuf>), Vec<CompiledFileSystemWatcher>>,
+    watch_requests: HashMap<(ServerName, String, Option<PathBuf>), Vec<CompiledFileSystemWatcher>>,
 ) -> Worker<(), Vec<FileEvent>> {
     info!("starting file watcher");
     Worker::spawn(
@@ -208,12 +208,12 @@ fn event_file_changes(
 }
 
 pub fn workspace_did_change_watched_files(
-    language_id: &LanguageId,
+    server_name: &ServerName,
     changes: Vec<FileEvent>,
     ctx: &mut Context,
 ) {
     let params = DidChangeWatchedFilesParams { changes };
-    ctx.notify::<DidChangeWatchedFiles>(language_id, params);
+    ctx.notify::<DidChangeWatchedFiles>(server_name, params);
 }
 
 #[derive(Clone)]
@@ -223,7 +223,7 @@ pub struct CompiledFileSystemWatcher {
 }
 
 pub fn register_workspace_did_change_watched_files(
-    language_id: &LanguageId,
+    server_name: &ServerName,
     options: Option<Value>,
     ctx: &mut Context,
 ) {
@@ -270,9 +270,9 @@ pub fn register_workspace_did_change_watched_files(
         };
         let default_watch_kind = WatchKind::Create | WatchKind::Change | WatchKind::Delete;
         let kind = watcher.kind.unwrap_or(default_watch_kind);
-        let server = &ctx.language_servers[language_id];
+        let server = &ctx.language_servers[server_name];
         ctx.pending_file_watchers
-            .entry((language_id.clone(), server.root_path.clone(), root_path))
+            .entry((server_name.clone(), server.root_path.clone(), root_path))
             .or_default()
             .push(CompiledFileSystemWatcher { kind, pattern });
     }

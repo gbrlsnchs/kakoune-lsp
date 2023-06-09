@@ -88,8 +88,8 @@ pub fn start(config: &Config, initial_request: Option<String>) -> i32 {
                     continue 'event_loop;
                 }
 
-                let language_ids = filetypes.get(&request.meta.filetype);
-                if language_ids.is_none() {
+                let cfg = filetypes.get(&request.meta.filetype);
+                if cfg.is_none() {
                     let msg = format!(
                         "Language server is not configured for filetype `{}`",
                         &request.meta.filetype
@@ -100,14 +100,15 @@ pub fn start(config: &Config, initial_request: Option<String>) -> i32 {
                     continue 'event_loop;
                 }
 
-                let language_ids = language_ids.unwrap();
-                let routes: Vec<_> = language_ids
+                let (language_id, servers) = cfg.unwrap();
+                let language  = &languages[language_id];
+                let routes: Vec<_> = servers
                     .iter()
-                    .map(|language_id| {
-                        let root = find_project_root(language_id, &languages[language_id].roots, &request.meta.buffile);
+                    .map(|server_name| {
+                        let root = find_project_root(server_name, &language[server_name].roots, &request.meta.buffile);
                         let route = Route {
                             session: request.meta.session.clone(),
-                            language: language_id.clone(),
+                            server_name: server_name.clone(),
                             root,
                         };
 
@@ -136,9 +137,10 @@ pub fn start(config: &Config, initial_request: Option<String>) -> i32 {
                         // get didClose message without running controller, unless it crashed
                         // before. In that case didClose can be safely ignored as well.
                         if request.method != notification::DidCloseTextDocument::METHOD {
-                            debug!("Spawning a new controller for {:?}", routes);
+                            debug!("Spawning a new controller for {:#?}", routes);
                             controller_entry.insert(spawn_controller(
                                 config.clone(),
+                                language_id.clone(),
                                 routes,
                                 request,
                                 editor.to_editor.sender().clone(),
@@ -223,7 +225,7 @@ fn exit_editor_session(controllers: &mut Controllers, request: &EditorRequest) {
             .all(|route| route.session == request.meta.session)
         {
             for route in routes {
-                info!("Exit {} in project {}", route.language, route.root);
+                info!("Exit {} in project {}", route.server_name, route.root);
             }
             // to notify kak-lsp about editor session end we use the same `exit` notification as
             // used in LSP spec to notify language server to exit, thus we can just clone request
@@ -251,13 +253,14 @@ fn stop_session(controllers: &mut Controllers) {
             error!("Failed to send stop message to language server");
         }
         for route in &routes {
-            info!("Exit {} in project {}", route.language, route.root);
+            info!("Exit {} in project {}", route.server_name, route.root);
         }
     }
 }
 
 fn spawn_controller(
     config: Config,
+    language_id: LanguageId,
     routes: Vec<Route>,
     request: EditorRequest,
     to_editor: Sender<EditorResponse>,
@@ -266,7 +269,7 @@ fn spawn_controller(
     let channel_capacity = 1024;
 
     let worker = Worker::spawn("Controller", channel_capacity, move |receiver, _| {
-        controller::start(to_editor, receiver, &routes, request, config);
+        controller::start(to_editor, receiver, &language_id, &routes, request, config);
     });
 
     ControllerHandle { worker }

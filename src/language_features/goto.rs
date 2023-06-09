@@ -1,6 +1,6 @@
 use crate::context::{Context, RequestParams};
 use crate::position::*;
-use crate::types::{EditorMeta, EditorParams, KakouneRange, LanguageId, PositionParams};
+use crate::types::{EditorMeta, EditorParams, KakouneRange, PositionParams, ServerName};
 use crate::util::{editor_quote, short_file_path};
 use indoc::formatdoc;
 use itertools::Itertools;
@@ -13,10 +13,10 @@ use url::Url;
 
 pub fn goto(
     meta: EditorMeta,
-    result: (LanguageId, Option<GotoDefinitionResponse>),
+    result: (ServerName, Option<GotoDefinitionResponse>),
     ctx: &mut Context,
 ) {
-    let (language_id, result) = result;
+    let (server_name, result) = result;
     let locations = match result {
         Some(GotoDefinitionResponse::Scalar(location)) => vec![location],
         Some(GotoDefinitionResponse::Array(locations)) => locations,
@@ -35,10 +35,10 @@ pub fn goto(
     match locations.len() {
         0 => {}
         1 => {
-            goto_location(&language_id, meta, &locations[0], ctx);
+            goto_location(&server_name, meta, &locations[0], ctx);
         }
         _ => {
-            goto_locations(&language_id, meta, &locations, ctx);
+            goto_locations(&server_name, meta, &locations, ctx);
         }
     }
 }
@@ -54,7 +54,7 @@ pub fn edit_at_range(buffile: &str, range: KakouneRange) -> String {
 }
 
 fn goto_location(
-    language_id: &LanguageId,
+    server_name: &ServerName,
     meta: EditorMeta,
     Location { uri, range }: &Location,
     ctx: &mut Context,
@@ -62,7 +62,7 @@ fn goto_location(
     let path = uri.to_file_path().unwrap();
     let path_str = path.to_str().unwrap();
     if let Some(contents) = get_file_contents(path_str, ctx) {
-        let server = &ctx.language_servers[language_id];
+        let server = &ctx.language_servers[server_name];
         let range = lsp_range_to_kakoune(range, &contents, server.offset_encoding);
         let command = format!(
             "evaluate-commands -try-client %opt{{jumpclient}} -- {}",
@@ -73,12 +73,12 @@ fn goto_location(
 }
 
 fn goto_locations(
-    language_id: &LanguageId,
+    server_name: &ServerName,
     meta: EditorMeta,
     locations: &[Location],
     ctx: &mut Context,
 ) {
-    let server = &ctx.language_servers[language_id];
+    let server = &ctx.language_servers[server_name];
     let select_location = locations
         .iter()
         .group_by(|Location { uri, .. }| uri.to_file_path().unwrap())
@@ -124,16 +124,16 @@ pub fn text_document_definition(
     let req_params = ctx
         .language_servers
         .iter()
-        .map(|(language_id, srv_settings)| {
+        .map(|(server_name, server_settings)| {
             (
-                language_id.clone(),
+                server_name.clone(),
                 vec![GotoDefinitionParams {
                     text_document_position_params: TextDocumentPositionParams {
                         text_document: TextDocumentIdentifier {
                             uri: Url::from_file_path(&meta.buffile).unwrap(),
                         },
                         position: get_lsp_position(
-                            srv_settings,
+                            server_settings,
                             &meta.buffile,
                             &params.position,
                             ctx,
@@ -171,16 +171,16 @@ pub fn text_document_implementation(meta: EditorMeta, params: EditorParams, ctx:
     let req_params = ctx
         .language_servers
         .iter()
-        .map(|(language_id, srv_settings)| {
+        .map(|(server_name, server_settings)| {
             (
-                language_id.clone(),
+                server_name.clone(),
                 vec![GotoDefinitionParams {
                     text_document_position_params: TextDocumentPositionParams {
                         text_document: TextDocumentIdentifier {
                             uri: Url::from_file_path(&meta.buffile).unwrap(),
                         },
                         position: get_lsp_position(
-                            srv_settings,
+                            server_settings,
                             &meta.buffile,
                             &params.position,
                             ctx,
@@ -209,16 +209,16 @@ pub fn text_document_type_definition(meta: EditorMeta, params: EditorParams, ctx
     let req_params = ctx
         .language_servers
         .iter()
-        .map(|(language_id, srv_settings)| {
+        .map(|(server_name, server_settings)| {
             (
-                language_id.clone(),
+                server_name.clone(),
                 vec![GotoDefinitionParams {
                     text_document_position_params: TextDocumentPositionParams {
                         text_document: TextDocumentIdentifier {
                             uri: Url::from_file_path(&meta.buffile).unwrap(),
                         },
                         position: get_lsp_position(
-                            srv_settings,
+                            server_settings,
                             &meta.buffile,
                             &params.position,
                             ctx,
@@ -247,16 +247,16 @@ pub fn text_document_references(meta: EditorMeta, params: EditorParams, ctx: &mu
     let req_params = ctx
         .language_servers
         .iter()
-        .map(|(language_id, srv_settings)| {
+        .map(|(server_name, server_settings)| {
             (
-                language_id.clone(),
+                server_name.clone(),
                 vec![ReferenceParams {
                     text_document_position: TextDocumentPositionParams {
                         text_document: TextDocumentIdentifier {
                             uri: Url::from_file_path(&meta.buffile).unwrap(),
                         },
                         position: get_lsp_position(
-                            srv_settings,
+                            server_settings,
                             &meta.buffile,
                             &params.position,
                             ctx,
@@ -277,9 +277,9 @@ pub fn text_document_references(meta: EditorMeta, params: EditorParams, ctx: &mu
         RequestParams::Each(req_params),
         move |ctx: &mut Context, meta, results| {
             if let Some(result) = results.into_iter().find(|(_, v)| v.is_some()) {
-                let (language_id, loc) = result;
+                let (server_name, loc) = result;
                 let loc = loc.map(GotoDefinitionResponse::Array);
-                goto(meta, (language_id.clone(), loc), ctx);
+                goto(meta, (server_name.clone(), loc), ctx);
             }
         },
     );

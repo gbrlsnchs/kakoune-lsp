@@ -35,7 +35,7 @@ pub fn text_document_selection_range(meta: EditorMeta, params: EditorParams, ctx
     let req_params = ctx
         .language_servers
         .iter()
-        .map(|(language_id, srv_settings)| {
+        .map(|(server_name, server_settings)| {
             let cursor_positions = selections
                 .iter()
                 .map(|range| {
@@ -44,12 +44,12 @@ pub fn text_document_selection_range(meta: EditorMeta, params: EditorParams, ctx
                     } else {
                         &range.end
                     };
-                    kakoune_position_to_lsp(cursor, &document.text, srv_settings.offset_encoding)
+                    kakoune_position_to_lsp(cursor, &document.text, server_settings.offset_encoding)
                 })
                 .collect();
 
             (
-                language_id.clone(),
+                server_name.clone(),
                 vec![SelectionRangeParams {
                     text_document: TextDocumentIdentifier {
                         uri: Url::from_file_path(&meta.buffile).unwrap(),
@@ -73,13 +73,13 @@ pub fn text_document_selection_range(meta: EditorMeta, params: EditorParams, ctx
 }
 
 fn editor_selection_range(
-    result: (LanguageId, Option<Vec<SelectionRange>>),
+    result: (ServerName, Option<Vec<SelectionRange>>),
     selections: Vec<KakouneRange>,
     is_cursor_left_of_anchor: bool,
     meta: EditorMeta,
     ctx: &mut Context,
 ) {
-    let (language_id, result) = result;
+    let (server_name, result) = result;
     let selection_ranges = match result {
         Some(selection_ranges) => selection_ranges,
         None => return,
@@ -97,7 +97,7 @@ fn editor_selection_range(
         }
     };
 
-    let srv_settings = &ctx.language_servers[&language_id];
+    let server = &ctx.language_servers[&server_name];
 
     // We get a list of ranges of parent nodes for each Kakoune selection.  The UI wants to
     // select parent nodes of all Kakoune selections at once.  This means we want to have a
@@ -110,7 +110,7 @@ fn editor_selection_range(
         loop {
             let range = {
                 let range =
-                    lsp_range_to_kakoune(&cur.range, &document.text, srv_settings.offset_encoding);
+                    lsp_range_to_kakoune(&cur.range, &document.text, server.offset_encoding);
                 if is_cursor_left_of_anchor {
                     KakouneRange {
                         start: range.end,
@@ -156,8 +156,7 @@ fn editor_selection_range(
         let mut cur = &selection_ranges[0];
         let mut i = 0;
         loop {
-            let range =
-                lsp_range_to_kakoune(&cur.range, &document.text, srv_settings.offset_encoding);
+            let range = lsp_range_to_kakoune(&cur.range, &document.text, server.offset_encoding);
             // Found a range that exceeds the main selection's range.
             if !contains(&selections[0], &range) {
                 break i;

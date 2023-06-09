@@ -14,16 +14,16 @@ pub fn text_document_rename(meta: EditorMeta, params: EditorParams, ctx: &mut Co
     let req_params = ctx
         .language_servers
         .iter()
-        .map(|(language_id, srv_settings)| {
+        .map(|(server_name, server_settings)| {
             (
-                language_id.clone(),
+                server_name.clone(),
                 vec![RenameParams {
                     text_document_position: TextDocumentPositionParams {
                         text_document: TextDocumentIdentifier {
                             uri: Url::from_file_path(&meta.buffile).unwrap(),
                         },
                         position: get_lsp_position(
-                            srv_settings,
+                            server_settings,
                             &meta.buffile,
                             &params.position,
                             ctx,
@@ -48,11 +48,11 @@ pub fn text_document_rename(meta: EditorMeta, params: EditorParams, ctx: &mut Co
 }
 
 // TODO handle version, so change is not applied if buffer is modified (and need to show a warning)
-fn editor_rename(meta: EditorMeta, result: (LanguageId, Option<WorkspaceEdit>), ctx: &mut Context) {
-    let (language_id, result) = result;
+fn editor_rename(meta: EditorMeta, result: (ServerName, Option<WorkspaceEdit>), ctx: &mut Context) {
+    let (server_name, result) = result;
     if result.is_none() {
         return;
     }
     let result = result.unwrap();
-    workspace::apply_edit(&language_id, meta, result, ctx);
+    workspace::apply_edit(&server_name, meta, result, ctx);
 }

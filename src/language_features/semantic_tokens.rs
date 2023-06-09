@@ -1,7 +1,7 @@
 use crate::capabilities::{attempt_server_capability, CAPABILITY_SEMANTIC_TOKENS};
 use crate::context::{Context, RequestParams};
 use crate::position::lsp_range_to_kakoune;
-use crate::types::{EditorMeta, LanguageId};
+use crate::types::{EditorMeta, ServerName};
 use crate::util::editor_quote;
 use indoc::formatdoc;
 use lsp_types::request::SemanticTokensFullRequest;
@@ -24,9 +24,9 @@ pub fn tokens_request(meta: EditorMeta, ctx: &mut Context) {
 
     let req_params = eligible_servers
         .into_iter()
-        .map(|(language_id, _)| {
+        .map(|(server_name, _)| {
             (
-                language_id.clone(),
+                server_name.clone(),
                 vec![SemanticTokensParams {
                     partial_result_params: Default::default(),
                     text_document: TextDocumentIdentifier {
@@ -41,9 +41,9 @@ pub fn tokens_request(meta: EditorMeta, ctx: &mut Context) {
         meta,
         RequestParams::Each(req_params),
         move |ctx, meta, results| {
-            if let Some((language_id, response)) = results.into_iter().find(|(_, v)| v.is_some()) {
+            if let Some((server_name, response)) = results.into_iter().find(|(_, v)| v.is_some()) {
                 if let Some(response) = response {
-                    tokens_response(meta, (language_id, response), ctx);
+                    tokens_response(meta, (server_name, response), ctx);
                 }
             }
         },
@@ -52,12 +52,12 @@ pub fn tokens_request(meta: EditorMeta, ctx: &mut Context) {
 
 pub fn tokens_response(
     meta: EditorMeta,
-    response: (LanguageId, SemanticTokensResult),
+    response: (ServerName, SemanticTokensResult),
     ctx: &mut Context,
 ) {
-    let (language_id, tokens) = response;
-    let srv_settings = &ctx.language_servers[&language_id];
-    let legend = match srv_settings
+    let (server_name, tokens) = response;
+    let server = &ctx.language_servers[&server_name];
+    let legend = match server
         .capabilities
         .as_ref()
         .unwrap()
@@ -108,8 +108,7 @@ pub fn tokens_response(
                     start: Position::new(line, start),
                     end: Position::new(line, start + length),
                 };
-                let range =
-                    lsp_range_to_kakoune(&range, &document.text, srv_settings.offset_encoding);
+                let range = lsp_range_to_kakoune(&range, &document.text, server.offset_encoding);
                 // See the spec for information on the integer encoding:
                 // https://microsoft.github.io/language-server-protocol/specifications/specification-current/#textDocument_semanticTokens
                 let token_name = legend.token_types[token_type as usize].as_str();
