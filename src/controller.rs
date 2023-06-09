@@ -503,9 +503,6 @@ fn dispatch_incoming_editor_request(request: EditorRequest, ctx: &mut Context) {
 }
 
 fn dispatch_editor_request(request: EditorRequest, ctx: &mut Context) {
-    // Clone all language servers to make borrow checker happy.
-    let servers: Vec<_> = ctx.language_servers.keys().cloned().collect();
-
     ensure_did_open(&request, ctx);
     let method: &str = &request.method;
     let meta = request.meta;
@@ -563,15 +560,14 @@ fn dispatch_editor_request(request: EditorRequest, ctx: &mut Context) {
             goto::text_document_references(meta, params, ctx);
         }
         notification::Exit::METHOD => {
+            let servers: Vec<_> = ctx.language_servers.keys().cloned().collect();
             for language_id in &servers {
                 ctx.notify::<notification::Exit>(language_id, ());
             }
         }
 
         notification::WorkDoneProgressCancel::METHOD => {
-            for language_id in &servers {
-                progress::work_done_progress_cancel(language_id, meta.clone(), params.clone(), ctx);
-            }
+            progress::work_done_progress_cancel(meta, params, ctx);
         }
         request::SelectionRangeRequest::METHOD => {
             selection_range::text_document_selection_range(meta, params, ctx);
@@ -616,6 +612,7 @@ fn dispatch_editor_request(request: EditorRequest, ctx: &mut Context) {
             capabilities::capabilities(meta, ctx);
         }
         "apply-workspace-edit" => {
+            let servers: Vec<_> = ctx.language_servers.keys().cloned().collect();
             if let Some(language_id) = servers.first() {
                 workspace::apply_edit_from_editor(language_id, meta, params, ctx);
             }
@@ -629,14 +626,10 @@ fn dispatch_editor_request(request: EditorRequest, ctx: &mut Context) {
         }
 
         show_message::SHOW_MESSAGE_REQUEST_NEXT => {
-            for language_id in &servers {
-                show_message::show_message_request_next(language_id, meta.clone(), ctx);
-            }
+            show_message::show_message_request_next(meta, ctx);
         }
         show_message::SHOW_MESSAGE_REQUEST_RESPOND => {
-            for language_id in &servers {
-                show_message::show_message_request_respond(language_id, params.clone(), ctx);
-            }
+            show_message::show_message_request_respond(params, ctx);
         }
 
         // CCLS
@@ -770,7 +763,7 @@ fn dispatch_server_notification(
             ccls::publish_semantic_highlighting(params, ctx);
         }
         notification::Exit::METHOD => {
-            debug!("Language server exited");
+            debug!("{language_id} language server exited");
         }
         notification::ShowMessage::METHOD => {
             let params: ShowMessageParams = params
