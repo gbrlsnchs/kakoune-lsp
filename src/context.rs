@@ -247,16 +247,16 @@ impl Context {
     pub fn cancel(&mut self, language_id: &LanguageId, id: Id) {
         match self.response_waitlist.get_mut(&id) {
             Some((_meta, method, _batch_id, canceled)) => {
-                debug!("Canceling request {id:?} ({method})");
+                debug!("Canceling request to {language_id} server {id:?} ({method})");
                 *canceled = true;
             }
             None => {
-                error!("Failed to cancel request {id:?}");
+                error!("Failed to cancel request {id:?} to {language_id} server");
             }
         }
         let id = match id {
             Id::Num(id) => id,
-            _ => panic!("expected numeric ID"),
+            _ => panic!("expected numeric ID for {} server", language_id),
         };
         self.notify::<Cancel>(
             language_id,
