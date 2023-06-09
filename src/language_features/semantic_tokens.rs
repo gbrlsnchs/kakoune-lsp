@@ -22,6 +22,9 @@ pub fn tokens_request(meta: EditorMeta, ctx: &mut Context) {
         return;
     }
 
+    let (first_server, _) = eligible_servers.first().unwrap();
+    let first_server = first_server.to_string();
+
     let req_params = eligible_servers
         .into_iter()
         .map(|(server_name, _)| {
@@ -41,10 +44,13 @@ pub fn tokens_request(meta: EditorMeta, ctx: &mut Context) {
         meta,
         RequestParams::Each(req_params),
         move |ctx, meta, results| {
-            if let Some((server_name, response)) = results.into_iter().find(|(_, v)| v.is_some()) {
-                if let Some(response) = response {
-                    tokens_response(meta, (server_name, response), ctx);
-                }
+            let (server_name, response) = match results.into_iter().find(|(_, v)| v.is_some()) {
+                Some(result) => result,
+                None => (first_server, None),
+            };
+
+            if let Some(response) = response {
+                tokens_response(meta, (server_name, response), ctx);
             }
         },
     );

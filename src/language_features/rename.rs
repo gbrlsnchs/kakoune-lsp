@@ -40,9 +40,15 @@ pub fn text_document_rename(meta: EditorMeta, params: EditorParams, ctx: &mut Co
         meta,
         RequestParams::Each(req_params),
         move |ctx: &mut Context, meta, results| {
-            if let Some(result) = results.into_iter().find(|(_, v)| v.is_some()) {
-                editor_rename(meta, result, ctx)
-            }
+            let result = match results.into_iter().find(|(_, v)| v.is_some()) {
+                Some(result) => result,
+                None => {
+                    let entry = ctx.language_servers.first_entry().unwrap();
+                    (entry.key().clone(), None)
+                }
+            };
+
+            editor_rename(meta, result, ctx)
         },
     );
 }

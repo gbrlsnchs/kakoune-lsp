@@ -113,9 +113,15 @@ pub fn workspace_symbol(meta: EditorMeta, params: EditorParams, ctx: &mut Contex
         meta,
         RequestParams::All(vec![params]),
         move |ctx, meta, results| {
-            if let Some(result) = results.into_iter().find(|(_, v)| v.is_some()) {
-                editor_workspace_symbol(meta, result, ctx)
-            }
+            let result = match results.into_iter().find(|(_, v)| v.is_some()) {
+                Some(result) => result,
+                None => {
+                    let entry = ctx.language_servers.first_entry().unwrap();
+                    (entry.key().clone(), None)
+                }
+            };
+
+            editor_workspace_symbol(meta, result, ctx)
         },
     );
 }

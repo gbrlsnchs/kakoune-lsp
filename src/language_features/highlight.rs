@@ -23,6 +23,9 @@ pub fn text_document_highlight(meta: EditorMeta, params: EditorParams, ctx: &mut
         return;
     }
 
+    let (first_server, _) = eligible_servers.first().unwrap();
+    let first_server = first_server.to_string();
+
     let params = PositionParams::deserialize(params).unwrap();
     let req_params = eligible_servers
         .into_iter()
@@ -52,9 +55,12 @@ pub fn text_document_highlight(meta: EditorMeta, params: EditorParams, ctx: &mut
         meta,
         RequestParams::Each(req_params),
         move |ctx: &mut Context, meta, results| {
-            if let Some(result) = results.into_iter().find(|(_, v)| v.is_some()) {
-                editor_document_highlight(meta, result, params.position, ctx)
-            }
+            let result = match results.into_iter().find(|(_, v)| v.is_some()) {
+                Some(result) => result,
+                None => (first_server, Some(vec![])),
+            };
+
+            editor_document_highlight(meta, result, params.position, ctx)
         },
     );
 }

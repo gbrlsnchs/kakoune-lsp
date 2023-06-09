@@ -33,9 +33,15 @@ pub fn text_document_document_symbol(meta: EditorMeta, ctx: &mut Context) {
         meta,
         RequestParams::All(vec![req_params]),
         move |ctx: &mut Context, meta, results| {
-            if let Some(result) = results.into_iter().find(|(_, v)| v.is_some()) {
-                editor_document_symbol(meta, result, ctx)
-            }
+            let result = match results.into_iter().find(|(_, v)| v.is_some()) {
+                Some(result) => result,
+                None => {
+                    let entry = ctx.language_servers.first_entry().unwrap();
+                    (entry.key().clone(), None)
+                }
+            };
+
+            editor_document_symbol(meta, result, ctx)
         },
     );
 }
@@ -52,9 +58,15 @@ pub fn next_or_prev_symbol(meta: EditorMeta, editor_params: EditorParams, ctx: &
         meta,
         RequestParams::All(vec![req_params]),
         move |ctx: &mut Context, meta, results| {
-            if let Some(result) = results.into_iter().find(|(_, v)| v.is_some()) {
-                editor_next_or_prev_symbol(meta, editor_params, result, ctx)
-            }
+            let result = match results.into_iter().find(|(_, v)| v.is_some()) {
+                Some(result) => result,
+                None => {
+                    let entry = ctx.language_servers.first_entry().unwrap();
+                    (entry.key().clone(), None)
+                }
+            };
+
+            editor_next_or_prev_symbol(meta, editor_params, result, ctx)
         },
     );
 }
@@ -590,9 +602,15 @@ pub fn object(meta: EditorMeta, editor_params: EditorParams, ctx: &mut Context) 
         meta,
         RequestParams::All(vec![req_params]),
         move |ctx: &mut Context, meta, results| {
-            if let Some(result) = results.into_iter().find(|(_, v)| v.is_some()) {
-                editor_object(meta, editor_params, result, ctx)
-            }
+            let result = match results.into_iter().find(|(_, v)| v.is_some()) {
+                Some(result) => result,
+                None => {
+                    let entry = ctx.language_servers.first_entry().unwrap();
+                    (entry.key().clone(), None)
+                }
+            };
+
+            editor_object(meta, editor_params, result, ctx)
         },
     );
 }
@@ -804,16 +822,20 @@ pub fn document_symbol_menu(meta: EditorMeta, editor_params: EditorParams, ctx: 
         meta,
         RequestParams::All(vec![req_params]),
         move |ctx: &mut Context, meta, results| {
-            if let Some(result) = results.into_iter().find(|(_, v)| v.is_some()) {
-                let maybe_goto_symbol = GotoSymbolParams::deserialize(editor_params)
-                    .unwrap()
-                    .goto_symbol;
-                match maybe_goto_symbol {
-                    Some(goto_symbol) => {
-                        editor_document_symbol_goto(meta, goto_symbol, result, ctx)
-                    }
-                    None => editor_document_symbol_menu(meta, result, ctx),
+            let result = match results.into_iter().find(|(_, v)| v.is_some()) {
+                Some(result) => result,
+                None => {
+                    let entry = ctx.language_servers.first_entry().unwrap();
+                    (entry.key().clone(), None)
                 }
+            };
+
+            let maybe_goto_symbol = GotoSymbolParams::deserialize(editor_params)
+                .unwrap()
+                .goto_symbol;
+            match maybe_goto_symbol {
+                Some(goto_symbol) => editor_document_symbol_goto(meta, goto_symbol, result, ctx),
+                None => editor_document_symbol_menu(meta, result, ctx),
             }
         },
     );

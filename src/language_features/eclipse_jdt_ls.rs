@@ -25,14 +25,18 @@ pub fn organize_imports(meta: EditorMeta, ctx: &mut Context) {
             ..ExecuteCommandParams::default()
         }],
     );
+
     ctx.call::<ExecuteCommand, _>(
         meta,
         RequestParams::Each(req_params),
         move |ctx, meta, results| {
-            if let Some((_, response)) = results.into_iter().find(|(_, v)| v.is_some()) {
-                if let Some(response) = response {
-                    organize_imports_response(meta, serde_json::from_value(response).unwrap(), ctx);
-                }
+            let response = match results.into_iter().find(|(_, v)| v.is_some()) {
+                Some((_, result)) => result,
+                None => None,
+            };
+
+            if let Some(response) = response {
+                organize_imports_response(meta, serde_json::from_value(response).unwrap(), ctx);
             }
         },
     );

@@ -16,6 +16,9 @@ pub fn text_document_formatting(meta: EditorMeta, params: EditorParams, ctx: &mu
         return;
     }
 
+    let (first_server, _) = eligible_servers.first().unwrap();
+    let first_server = first_server.to_string();
+
     let params = FormattingOptions::deserialize(params)
         .expect("Params should follow FormattingOptions structure");
     let req_params = eligible_servers
@@ -37,14 +40,13 @@ pub fn text_document_formatting(meta: EditorMeta, params: EditorParams, ctx: &mu
         meta,
         RequestParams::Each(req_params),
         move |ctx, meta, results| {
-            if let Some((server_name, result)) = results.into_iter().find(|(_, v)| v.is_some()) {
-                let text_edits = result.unwrap_or_default();
-                super::range_formatting::editor_range_formatting(
-                    meta,
-                    (server_name, text_edits),
-                    ctx,
-                )
-            }
+            let (server_name, result) = match results.into_iter().find(|(_, v)| v.is_some()) {
+                Some(result) => result,
+                None => (first_server, Some(vec![])),
+            };
+
+            let text_edits = result.unwrap_or_default();
+            super::range_formatting::editor_range_formatting(meta, (server_name, text_edits), ctx)
         },
     );
 }

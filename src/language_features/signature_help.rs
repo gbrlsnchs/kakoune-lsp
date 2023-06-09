@@ -21,6 +21,9 @@ pub fn text_document_signature_help(meta: EditorMeta, params: EditorParams, ctx:
         return;
     }
 
+    let (first_server, _) = eligible_servers.first().unwrap();
+    let first_server = first_server.to_string();
+
     let params = PositionParams::deserialize(params).unwrap();
     let req_params = eligible_servers
         .into_iter()
@@ -50,9 +53,12 @@ pub fn text_document_signature_help(meta: EditorMeta, params: EditorParams, ctx:
         meta,
         RequestParams::Each(req_params),
         move |ctx: &mut Context, meta, results| {
-            if let Some(result) = results.into_iter().find(|(_, v)| v.is_some()) {
-                editor_signature_help(meta, params, result, ctx)
-            }
+            let result = match results.into_iter().find(|(_, v)| v.is_some()) {
+                Some(result) => result,
+                None => (first_server, None),
+            };
+
+            editor_signature_help(meta, params, result, ctx)
         },
     );
 }

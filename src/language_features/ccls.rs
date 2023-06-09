@@ -56,13 +56,18 @@ pub fn navigate(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
             direction: params.direction,
         }],
     );
+
+    let server_name = server_name.clone();
     ctx.call::<NavigateRequest, _>(
         meta,
         RequestParams::Each(req_params),
         move |ctx: &mut Context, meta, results| {
-            if let Some(response) = results.into_iter().find(|(_, v)| v.is_some()) {
-                goto::goto(meta, response, ctx);
-            }
+            let response = match results.into_iter().find(|(_, v)| v.is_some()) {
+                Some(result) => result,
+                None => (server_name, None),
+            };
+
+            goto::goto(meta, response, ctx);
         },
     );
 }
@@ -106,17 +111,22 @@ pub fn vars(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
                 .unwrap(),
         }],
     );
+
+    let server_name = server_name.clone();
     ctx.call::<VarsRequest, _>(
         meta,
         RequestParams::Each(req_params),
         move |ctx: &mut Context, meta, results| {
-            if let Some((server_name, result)) = results.into_iter().find(|(_, v)| v.is_some()) {
-                goto::goto(
-                    meta,
-                    (server_name, result.map(GotoDefinitionResponse::Array)),
-                    ctx,
-                );
-            }
+            let (server_name, result) = match results.into_iter().find(|(_, v)| v.is_some()) {
+                Some(result) => result,
+                None => (server_name, None),
+            };
+
+            goto::goto(
+                meta,
+                (server_name, result.map(GotoDefinitionResponse::Array)),
+                ctx,
+            );
         },
     );
 }
@@ -168,17 +178,22 @@ pub fn inheritance(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
             derived: params.derived,
         }],
     );
+
+    let server_name = server_name.clone();
     ctx.call::<InheritanceRequest, _>(
         meta,
         RequestParams::Each(req_params),
         move |ctx, meta, results| {
-            if let Some((server_name, result)) = results.into_iter().find(|(_, v)| v.is_some()) {
-                goto::goto(
-                    meta,
-                    (server_name, result.map(GotoDefinitionResponse::Array)),
-                    ctx,
-                );
-            }
+            let (server_name, result) = match results.into_iter().find(|(_, v)| v.is_some()) {
+                Some(result) => result,
+                None => (server_name, None),
+            };
+
+            goto::goto(
+                meta,
+                (server_name, result.map(GotoDefinitionResponse::Array)),
+                ctx,
+            );
         },
     );
 }
@@ -227,17 +242,22 @@ pub fn call(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
             callee: params.callee,
         }],
     );
+
+    let server_name = server_name.clone();
     ctx.call::<CallRequest, _>(
         meta,
         RequestParams::Each(req_params),
         move |ctx, meta, results| {
-            if let Some((server_name, result)) = results.into_iter().find(|(_, v)| v.is_some()) {
-                goto::goto(
-                    meta,
-                    (server_name, result.map(GotoDefinitionResponse::Array)),
-                    ctx,
-                );
-            }
+            let (server_name, result) = match results.into_iter().find(|(_, v)| v.is_some()) {
+                Some(result) => result,
+                None => (server_name, None),
+            };
+
+            goto::goto(
+                meta,
+                (server_name, result.map(GotoDefinitionResponse::Array)),
+                ctx,
+            );
         },
     );
 }
@@ -286,17 +306,22 @@ pub fn member(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
             kind: params.kind,
         }],
     );
+
+    let server_name = server_name.clone();
     ctx.call::<MemberRequest, _>(
         meta,
         RequestParams::Each(req_params),
         move |ctx, meta, results| {
-            if let Some((server_name, result)) = results.into_iter().find(|(_, v)| v.is_some()) {
-                goto::goto(
-                    meta,
-                    (server_name, result.map(GotoDefinitionResponse::Array)),
-                    ctx,
-                )
-            }
+            let (server_name, result) = match results.into_iter().find(|(_, v)| v.is_some()) {
+                Some(result) => result,
+                None => (server_name, None),
+            };
+
+            goto::goto(
+                meta,
+                (server_name, result.map(GotoDefinitionResponse::Array)),
+                ctx,
+            )
         },
     );
 }

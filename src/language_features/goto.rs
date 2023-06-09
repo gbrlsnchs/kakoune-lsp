@@ -152,16 +152,28 @@ pub fn text_document_definition(
             meta,
             req_params,
             move |ctx: &mut Context, meta, results| {
-                if let Some(result) = results.into_iter().find(|(_, v)| v.is_some()) {
-                    goto(meta, result, ctx);
-                }
+                let result = match results.into_iter().find(|(_, v)| v.is_some()) {
+                    Some(result) => result,
+                    None => {
+                        let entry = ctx.language_servers.first_entry().unwrap();
+                        (entry.key().clone(), None)
+                    }
+                };
+
+                goto(meta, result, ctx);
             },
         );
     } else {
         ctx.call::<GotoDefinition, _>(meta, req_params, move |ctx: &mut Context, meta, results| {
-            if let Some(result) = results.into_iter().find(|(_, v)| v.is_some()) {
-                goto(meta, result, ctx);
-            }
+            let result = match results.into_iter().find(|(_, v)| v.is_some()) {
+                Some(result) => result,
+                None => {
+                    let entry = ctx.language_servers.first_entry().unwrap();
+                    (entry.key().clone(), None)
+                }
+            };
+
+            goto(meta, result, ctx);
         });
     }
 }
@@ -197,9 +209,15 @@ pub fn text_document_implementation(meta: EditorMeta, params: EditorParams, ctx:
         meta,
         RequestParams::Each(req_params),
         move |ctx: &mut Context, meta, results| {
-            if let Some(result) = results.into_iter().find(|(_, v)| v.is_some()) {
-                goto(meta, result, ctx);
-            }
+            let result = match results.into_iter().find(|(_, v)| v.is_some()) {
+                Some(result) => result,
+                None => {
+                    let entry = ctx.language_servers.first_entry().unwrap();
+                    (entry.key().clone(), None)
+                }
+            };
+
+            goto(meta, result, ctx);
         },
     );
 }
@@ -235,9 +253,15 @@ pub fn text_document_type_definition(meta: EditorMeta, params: EditorParams, ctx
         meta,
         RequestParams::Each(req_params),
         move |ctx: &mut Context, meta, results| {
-            if let Some(result) = results.into_iter().find(|(_, v)| v.is_some()) {
-                goto(meta, result, ctx);
-            }
+            let result = match results.into_iter().find(|(_, v)| v.is_some()) {
+                Some(result) => result,
+                None => {
+                    let entry = ctx.language_servers.first_entry().unwrap();
+                    (entry.key().clone(), None)
+                }
+            };
+
+            goto(meta, result, ctx);
         },
     );
 }
@@ -276,11 +300,17 @@ pub fn text_document_references(meta: EditorMeta, params: EditorParams, ctx: &mu
         meta,
         RequestParams::Each(req_params),
         move |ctx: &mut Context, meta, results| {
-            if let Some(result) = results.into_iter().find(|(_, v)| v.is_some()) {
-                let (server_name, loc) = result;
-                let loc = loc.map(GotoDefinitionResponse::Array);
-                goto(meta, (server_name.clone(), loc), ctx);
-            }
+            let result = match results.into_iter().find(|(_, v)| v.is_some()) {
+                Some(result) => result,
+                None => {
+                    let entry = ctx.language_servers.first_entry().unwrap();
+                    (entry.key().clone(), None)
+                }
+            };
+
+            let (server_name, loc) = result;
+            let loc = loc.map(GotoDefinitionResponse::Array);
+            goto(meta, (server_name, loc), ctx);
         },
     );
 }

@@ -65,9 +65,15 @@ pub fn text_document_selection_range(meta: EditorMeta, params: EditorParams, ctx
         meta,
         RequestParams::Each(req_params),
         move |ctx: &mut Context, meta, results| {
-            if let Some(result) = results.into_iter().find(|(_, v)| v.is_some()) {
-                editor_selection_range(result, selections, is_cursor_left_of_anchor, meta, ctx);
-            }
+            let result = match results.into_iter().find(|(_, v)| v.is_some()) {
+                Some(result) => result,
+                None => {
+                    let entry = ctx.language_servers.first_entry().unwrap();
+                    (entry.key().clone(), None)
+                }
+            };
+
+            editor_selection_range(result, selections, is_cursor_left_of_anchor, meta, ctx);
         },
     );
 }
