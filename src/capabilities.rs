@@ -676,9 +676,10 @@ pub fn capabilities(meta: EditorMeta, ctx: &mut Context) {
     }
 
     let command = formatdoc!(
-        "info 'kak-lsp commands supported by language servers:
+        "info 'kak-lsp commands supported by language servers ({}):
 
          {}'",
+        editor_escape(&ctx.language_servers.keys().join(", ")),
         editor_escape(
             &features
                 .into_iter()
