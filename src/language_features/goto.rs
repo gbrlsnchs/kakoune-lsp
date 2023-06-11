@@ -1,11 +1,12 @@
-use crate::context::{Context, RequestParams};
+use crate::context::{Context, RequestParams, ServerSettings};
 use crate::position::*;
 use crate::types::{EditorMeta, EditorParams, KakouneRange, PositionParams, ServerName};
 use crate::util::{editor_quote, short_file_path};
 use indoc::formatdoc;
 use itertools::Itertools;
 use lsp_types::request::{
-    GotoDeclaration, GotoDefinition, GotoImplementation, GotoTypeDefinition, References,
+    GotoDeclaration, GotoDefinition, GotoImplementation, GotoTypeDefinition,
+    GotoTypeDefinitionResponse, References,
 };
 use lsp_types::*;
 use serde::Deserialize;
@@ -13,32 +14,42 @@ use url::Url;
 
 pub fn goto(
     meta: EditorMeta,
-    result: (ServerName, Option<GotoDefinitionResponse>),
+    results: Vec<(ServerName, Option<GotoDefinitionResponse>)>,
     ctx: &mut Context,
 ) {
-    let (server_name, result) = result;
-    let locations = match result {
-        Some(GotoDefinitionResponse::Scalar(location)) => vec![location],
-        Some(GotoDefinitionResponse::Array(locations)) => locations,
-        Some(GotoDefinitionResponse::Link(locations)) => locations
-            .into_iter()
-            .map(
-                |LocationLink {
-                     target_uri: uri,
-                     target_selection_range: range,
-                     ..
-                 }| Location { uri, range },
-            )
-            .collect(),
-        None => return,
-    };
+    let locations: Vec<_> = results
+        .into_iter()
+        .filter(|(_, v)| v.is_some())
+        .map(|(server_name, result)| {
+            let response = result.unwrap();
+            match response {
+                GotoDefinitionResponse::Scalar(location) => vec![(server_name, location)],
+                GotoDefinitionResponse::Array(locations) => locations
+                    .into_iter()
+                    .map(|v| (server_name.clone(), v))
+                    .collect(),
+                GotoDefinitionResponse::Link(locations) => locations
+                    .into_iter()
+                    .map(
+                        |LocationLink {
+                             target_uri: uri,
+                             target_selection_range: range,
+                             ..
+                         }| (server_name.clone(), Location { uri, range }),
+                    )
+                    .collect(),
+            }
+        })
+        .flatten()
+        .collect();
+
     match locations.len() {
         0 => {}
         1 => {
-            goto_location(&server_name, meta, &locations[0], ctx);
+            goto_location(meta, &locations[0], ctx);
         }
         _ => {
-            goto_locations(&server_name, meta, &locations, ctx);
+            goto_locations(meta, &locations, ctx);
         }
     }
 }
@@ -54,9 +65,8 @@ pub fn edit_at_range(buffile: &str, range: KakouneRange) -> String {
 }
 
 fn goto_location(
-    server_name: &ServerName,
     meta: EditorMeta,
-    Location { uri, range }: &Location,
+    (server_name, Location { uri, range }): &(ServerName, Location),
     ctx: &mut Context,
 ) {
     let path = uri.to_file_path().unwrap();
@@ -72,16 +82,13 @@ fn goto_location(
     }
 }
 
-fn goto_locations(
-    server_name: &ServerName,
-    meta: EditorMeta,
-    locations: &[Location],
-    ctx: &mut Context,
-) {
-    let server = &ctx.language_servers[server_name];
+fn goto_locations(meta: EditorMeta, locations: &[(ServerName, Location)], ctx: &mut Context) {
+    let server_entry = ctx.language_servers.first_entry().unwrap();
+    let ServerSettings { root_path, .. } = server_entry.get();
+    let main_root_path = root_path.clone();
     let select_location = locations
         .iter()
-        .group_by(|Location { uri, .. }| uri.to_file_path().unwrap())
+        .group_by(|(_, Location { uri, .. })| uri.to_file_path().unwrap())
         .into_iter()
         .map(|(path, locations)| {
             let path_str = path.to_str().unwrap();
@@ -90,14 +97,17 @@ fn goto_locations(
                 None => return "".into(),
             };
             locations
-                .map(|Location { range, .. }| {
+                .map(|(server_name, Location { range, .. })| {
+                    let server = &ctx.language_servers[server_name];
                     let pos = lsp_range_to_kakoune(range, &contents, server.offset_encoding).start;
                     if range.start.line as usize >= contents.len_lines() {
                         return "".into();
                     }
+                    // Let's use the main server root path to dictate how
+                    // file paths should look like in the goto buffer.
                     format!(
                         "{}:{}:{}:{}",
-                        short_file_path(path_str, &server.root_path),
+                        short_file_path(path_str, &main_root_path),
                         pos.line,
                         pos.column,
                         contents.line(range.start.line as usize),
@@ -108,7 +118,7 @@ fn goto_locations(
         .join("");
     let command = format!(
         "lsp-show-goto-choices {} {}",
-        editor_quote(&server.root_path),
+        editor_quote(&main_root_path),
         editor_quote(&select_location),
     );
     ctx.exec(meta, command);
@@ -151,29 +161,11 @@ pub fn text_document_definition(
         ctx.call::<GotoDeclaration, _>(
             meta,
             req_params,
-            move |ctx: &mut Context, meta, results| {
-                let result = match results.into_iter().find(|(_, v)| v.is_some()) {
-                    Some(result) => result,
-                    None => {
-                        let entry = ctx.language_servers.first_entry().unwrap();
-                        (entry.key().clone(), None)
-                    }
-                };
-
-                goto(meta, result, ctx);
-            },
+            move |ctx: &mut Context, meta, results| goto(meta, results, ctx),
         );
     } else {
         ctx.call::<GotoDefinition, _>(meta, req_params, move |ctx: &mut Context, meta, results| {
-            let result = match results.into_iter().find(|(_, v)| v.is_some()) {
-                Some(result) => result,
-                None => {
-                    let entry = ctx.language_servers.first_entry().unwrap();
-                    (entry.key().clone(), None)
-                }
-            };
-
-            goto(meta, result, ctx);
+            goto(meta, results, ctx)
         });
     }
 }
@@ -208,17 +200,7 @@ pub fn text_document_implementation(meta: EditorMeta, params: EditorParams, ctx:
     ctx.call::<GotoImplementation, _>(
         meta,
         RequestParams::Each(req_params),
-        move |ctx: &mut Context, meta, results| {
-            let result = match results.into_iter().find(|(_, v)| v.is_some()) {
-                Some(result) => result,
-                None => {
-                    let entry = ctx.language_servers.first_entry().unwrap();
-                    (entry.key().clone(), None)
-                }
-            };
-
-            goto(meta, result, ctx);
-        },
+        move |ctx: &mut Context, meta, results| goto(meta, results, ctx),
     );
 }
 
@@ -252,17 +234,7 @@ pub fn text_document_type_definition(meta: EditorMeta, params: EditorParams, ctx
     ctx.call::<GotoTypeDefinition, _>(
         meta,
         RequestParams::Each(req_params),
-        move |ctx: &mut Context, meta, results| {
-            let result = match results.into_iter().find(|(_, v)| v.is_some()) {
-                Some(result) => result,
-                None => {
-                    let entry = ctx.language_servers.first_entry().unwrap();
-                    (entry.key().clone(), None)
-                }
-            };
-
-            goto(meta, result, ctx);
-        },
+        move |ctx: &mut Context, meta, results| goto(meta, results, ctx),
     );
 }
 
@@ -300,17 +272,11 @@ pub fn text_document_references(meta: EditorMeta, params: EditorParams, ctx: &mu
         meta,
         RequestParams::Each(req_params),
         move |ctx: &mut Context, meta, results| {
-            let result = match results.into_iter().find(|(_, v)| v.is_some()) {
-                Some(result) => result,
-                None => {
-                    let entry = ctx.language_servers.first_entry().unwrap();
-                    (entry.key().clone(), None)
-                }
-            };
-
-            let (server_name, loc) = result;
-            let loc = loc.map(GotoDefinitionResponse::Array);
-            goto(meta, (server_name, loc), ctx);
+            let results = results
+                .into_iter()
+                .map(|(server_name, loc)| (server_name, loc.map(GotoTypeDefinitionResponse::Array)))
+                .collect();
+            goto(meta, results, ctx);
         },
     );
 }

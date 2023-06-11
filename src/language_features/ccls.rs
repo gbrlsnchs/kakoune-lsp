@@ -57,18 +57,10 @@ pub fn navigate(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
         }],
     );
 
-    let server_name = server_name.clone();
     ctx.call::<NavigateRequest, _>(
         meta,
         RequestParams::Each(req_params),
-        move |ctx: &mut Context, meta, results| {
-            let response = match results.into_iter().find(|(_, v)| v.is_some()) {
-                Some(result) => result,
-                None => (server_name, None),
-            };
-
-            goto::goto(meta, response, ctx);
-        },
+        move |ctx: &mut Context, meta, results| goto::goto(meta, results, ctx),
     );
 }
 
@@ -112,21 +104,16 @@ pub fn vars(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
         }],
     );
 
-    let server_name = server_name.clone();
     ctx.call::<VarsRequest, _>(
         meta,
         RequestParams::Each(req_params),
         move |ctx: &mut Context, meta, results| {
-            let (server_name, result) = match results.into_iter().find(|(_, v)| v.is_some()) {
-                Some(result) => result,
-                None => (server_name, None),
-            };
+            let results = results
+                .into_iter()
+                .map(|(server_name, loc)| (server_name, loc.map(GotoDefinitionResponse::Array)))
+                .collect();
 
-            goto::goto(
-                meta,
-                (server_name, result.map(GotoDefinitionResponse::Array)),
-                ctx,
-            );
+            goto::goto(meta, results, ctx)
         },
     );
 }
@@ -179,21 +166,16 @@ pub fn inheritance(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
         }],
     );
 
-    let server_name = server_name.clone();
     ctx.call::<InheritanceRequest, _>(
         meta,
         RequestParams::Each(req_params),
         move |ctx, meta, results| {
-            let (server_name, result) = match results.into_iter().find(|(_, v)| v.is_some()) {
-                Some(result) => result,
-                None => (server_name, None),
-            };
+            let results = results
+                .into_iter()
+                .map(|(server_name, loc)| (server_name, loc.map(GotoDefinitionResponse::Array)))
+                .collect();
 
-            goto::goto(
-                meta,
-                (server_name, result.map(GotoDefinitionResponse::Array)),
-                ctx,
-            );
+            goto::goto(meta, results, ctx)
         },
     );
 }
@@ -243,21 +225,16 @@ pub fn call(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
         }],
     );
 
-    let server_name = server_name.clone();
     ctx.call::<CallRequest, _>(
         meta,
         RequestParams::Each(req_params),
         move |ctx, meta, results| {
-            let (server_name, result) = match results.into_iter().find(|(_, v)| v.is_some()) {
-                Some(result) => result,
-                None => (server_name, None),
-            };
+            let results = results
+                .into_iter()
+                .map(|(server_name, loc)| (server_name, loc.map(GotoDefinitionResponse::Array)))
+                .collect();
 
-            goto::goto(
-                meta,
-                (server_name, result.map(GotoDefinitionResponse::Array)),
-                ctx,
-            );
+            goto::goto(meta, results, ctx)
         },
     );
 }
@@ -307,21 +284,16 @@ pub fn member(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
         }],
     );
 
-    let server_name = server_name.clone();
     ctx.call::<MemberRequest, _>(
         meta,
         RequestParams::Each(req_params),
         move |ctx, meta, results| {
-            let (server_name, result) = match results.into_iter().find(|(_, v)| v.is_some()) {
-                Some(result) => result,
-                None => (server_name, None),
-            };
+            let results = results
+                .into_iter()
+                .map(|(server_name, loc)| (server_name, loc.map(GotoDefinitionResponse::Array)))
+                .collect();
 
-            goto::goto(
-                meta,
-                (server_name, result.map(GotoDefinitionResponse::Array)),
-                ctx,
-            )
+            goto::goto(meta, results, ctx)
         },
     );
 }
