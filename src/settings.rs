@@ -28,8 +28,7 @@ pub fn request_initialization_options_from_kakoune(
         let settings = ctx
             .dynamic_config
             .language
-            .get(&ctx.language_id)
-            .and_then(|m| m.get(server_name))
+            .get(server_name)
             .and_then(|v| v.settings.as_ref());
         let settings = configured_section(ctx, server_name, settings);
         if settings.is_some() {
@@ -43,12 +42,7 @@ pub fn request_initialization_options_from_kakoune(
             continue;
         }
 
-        let lang = ctx
-            .config
-            .language
-            .get(&ctx.language_id)
-            .and_then(|m| m.get(server_name))
-            .unwrap();
+        let lang = ctx.config.language.get(server_name).unwrap();
         let settings = configured_section(ctx, server_name, lang.settings.as_ref());
         sections.push(settings);
     }
@@ -63,8 +57,7 @@ pub fn configured_section(
     settings.and_then(|settings| {
         ctx.config
             .language
-            .get(&ctx.language_id)
-            .and_then(|m| m.get(server_name))
+            .get(server_name)
             .and_then(|cfg| cfg.settings_section.as_ref())
             .and_then(|section| settings.get(section).cloned())
     })

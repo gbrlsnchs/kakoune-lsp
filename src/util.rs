@@ -86,15 +86,17 @@ pub fn filetype_to_language_id_map(
 ) -> HashMap<String, (LanguageId, Vec<ServerName>)> {
     let mut filetypes: HashMap<String, (LanguageId, Vec<ServerName>)> = HashMap::default();
 
-    for (language_id, servers) in &config.language {
-        for (server_name, server) in servers {
-            for filetype in &server.filetypes {
-                let entry = filetypes
-                    .entry(filetype.clone())
-                    .or_insert((language_id.clone(), vec![]));
-                let (_, servers) = entry;
-                servers.push(server_name.clone());
-            }
+    for (server_name, config) in &config.language {
+        for filetype in &config.filetypes {
+            let entry = filetypes.entry(filetype.clone()).or_insert((
+                config
+                    .language_id
+                    .clone()
+                    .unwrap_or_else(|| server_name.clone()),
+                vec![],
+            ));
+            let (_, servers) = entry;
+            servers.push(server_name.clone());
         }
     }
 

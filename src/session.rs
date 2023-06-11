@@ -101,11 +101,11 @@ pub fn start(config: &Config, initial_request: Option<String>) -> i32 {
                 }
 
                 let (language_id, servers) = cfg.unwrap();
-                let language  = &languages[language_id];
                 let routes: Vec<_> = servers
                     .iter()
                     .map(|server_name| {
-                        let root = find_project_root(server_name, &language[server_name].roots, &request.meta.buffile);
+                        let language  = &languages[server_name];
+                        let root = find_project_root(server_name, &language.roots, &request.meta.buffile);
                         let route = Route {
                             session: request.meta.session.clone(),
                             server_name: server_name.clone(),
