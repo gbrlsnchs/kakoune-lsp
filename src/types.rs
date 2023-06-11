@@ -165,6 +165,7 @@ pub struct EditorResponse {
 
 pub type SessionId = String;
 pub type LanguageId = String;
+pub type ServerName = String;
 pub type RootPath = String;
 
 #[derive(PartialEq, Eq, Hash, Debug, Clone)]
