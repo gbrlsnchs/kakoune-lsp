@@ -39,13 +39,19 @@ pub fn did_change_configuration(meta: EditorMeta, mut params: EditorParams, ctx:
         let settings = ctx
             .dynamic_config
             .language
-            .get(server_name)
+            .get(&ctx.language_id)
+            .and_then(|cfgs| cfgs.find(&ctx.language_id, server_name))
             .and_then(|lang| lang.settings.as_ref());
         let settings = configured_section(ctx, server_name, settings).unwrap_or_else(|| {
             if !raw_settings.is_empty() {
                 Value::Object(explode_string_table(raw_settings))
             } else {
-                let server = ctx.config.language.get(server_name).unwrap();
+                let server = ctx
+                    .config
+                    .language
+                    .get(server_name)
+                    .and_then(|cfgs| cfgs.find(&ctx.language_id, server_name))
+                    .unwrap();
                 configured_section(ctx, server_name, server.settings.as_ref()).unwrap_or_default()
             }
         });
@@ -66,11 +72,13 @@ pub fn configuration(
         .dynamic_config
         .language
         .get(server_name)
+        .and_then(|cfgs| cfgs.find(&ctx.language_id, server_name))
         .and_then(|cfg| cfg.settings.as_ref().cloned())
         .or_else(|| {
             ctx.config
                 .language
                 .get(server_name)
+                .and_then(|cfgs| cfgs.find(&ctx.language_id, server_name))
                 .and_then(|conf| conf.settings.as_ref().cloned())
         });
 

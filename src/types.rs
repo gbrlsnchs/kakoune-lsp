@@ -1,5 +1,6 @@
 use jsonrpc_core::{Call, Output, Params};
 use lsp_types::{DiagnosticSeverity, FormattingOptions, Position, Range, SemanticTokenModifier};
+use serde::de::value::MapAccessDeserializer;
 use serde::de::{MapAccess, SeqAccess, Visitor};
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize};
 use serde_json::Value;
@@ -13,9 +14,94 @@ pub enum Void {}
 // Configuration
 
 #[derive(Clone, Deserialize, Debug)]
+pub struct ConfigList<T>(Vec<T>);
+
+impl ConfigList<LanguageServerConfig> {
+    pub fn find(
+        &self,
+        language_id: &LanguageId,
+        server_name: &ServerName,
+    ) -> Option<&LanguageServerConfig> {
+        self.iter()
+            .enumerate()
+            .find(|(idx, v)| {
+                let key = v.server.clone().unwrap_or_else(|| match idx {
+                    n if *n == 0 => language_id.to_string(),
+                    n => format!("{language_id}-{n}"),
+                });
+
+                key == *server_name
+            })
+            .map(|(_, v)| v)
+    }
+}
+
+impl ConfigList<DynamicLanguageServerConfig> {
+    pub fn find(
+        &self,
+        language_id: &LanguageId,
+        server_name: &ServerName,
+    ) -> Option<&DynamicLanguageServerConfig> {
+        self.iter()
+            .enumerate()
+            .find(|(idx, v)| {
+                let key = v.server.clone().unwrap_or_else(|| match idx {
+                    n if *n == 0 => language_id.to_string(),
+                    n => format!("{language_id}-{n}"),
+                });
+
+                key == *server_name
+            })
+            .map(|(_, v)| v)
+    }
+}
+
+impl<T> std::ops::Deref for ConfigList<T> {
+    type Target = Vec<T>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<'de, T> Visitor<'de> for ConfigList<T>
+where
+    T: Deserialize<'de>,
+{
+    type Value = ConfigList<T>;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("A valid language server configuration. See https://github.com/kak-lsp/kak-lsp#language-servers for the new configuration syntax for language servers")
+    }
+
+    fn visit_map<A>(self, map: A) -> Result<Self::Value, A::Error>
+    where
+        A: MapAccess<'de>,
+    {
+        let mut v: Vec<T> = Vec::new();
+        if let Ok(c) = Deserialize::deserialize(MapAccessDeserializer::new(map)) {
+            v.push(c);
+        }
+
+        Ok(ConfigList(v))
+    }
+
+    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+    where
+        A: SeqAccess<'de>,
+    {
+        let mut v: Vec<T> = Vec::new();
+        while let Ok(Some(c)) = seq.next_element() {
+            v.push(c);
+        }
+
+        Ok(ConfigList(v))
+    }
+}
+
+#[derive(Clone, Deserialize, Debug)]
 pub struct Config {
     #[serde(alias = "language_server")]
-    pub language: HashMap<ServerName, LanguageServerConfig>,
+    pub language: HashMap<LanguageId, ConfigList<LanguageServerConfig>>,
     #[serde(default)]
     pub server: ServerConfig,
     #[serde(default)]
@@ -29,7 +115,7 @@ pub struct Config {
 #[derive(Clone, Default, Deserialize, Debug)]
 pub struct DynamicConfig {
     #[serde(default, alias = "language_server")]
-    pub language: HashMap<ServerName, DynamicLanguageServerConfig>,
+    pub language: HashMap<LanguageId, ConfigList<DynamicLanguageServerConfig>>,
 }
 
 #[derive(Clone, Default, Deserialize, Debug)]
@@ -43,7 +129,7 @@ pub struct ServerConfig {
 #[derive(Clone, Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct LanguageServerConfig {
-    pub language_id: Option<LanguageId>,
+    pub server: Option<ServerName>,
     pub filetypes: Vec<String>,
     pub roots: Vec<String>,
     pub command: String,
@@ -61,6 +147,7 @@ pub struct LanguageServerConfig {
 #[derive(Clone, Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct DynamicLanguageServerConfig {
+    pub server: Option<ServerName>,
     pub settings: Option<Value>,
 }
 

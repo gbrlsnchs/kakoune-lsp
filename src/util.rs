@@ -84,19 +84,28 @@ pub fn escape_tuple_element(s: &str) -> String {
 pub fn filetype_to_language_id_map(
     config: &Config,
 ) -> HashMap<String, (LanguageId, Vec<ServerName>)> {
+    // NOTE: This resulting structure prevents mapping a filetype to multiple language IDs,
+    // and therefore the IDs will be consistent across filetypes. To change that (for whatever
+    // reason), this needs to be modified.
     let mut filetypes: HashMap<String, (LanguageId, Vec<ServerName>)> = HashMap::default();
 
-    for (server_name, config) in &config.language {
-        for filetype in &config.filetypes {
-            let entry = filetypes.entry(filetype.clone()).or_insert((
-                config
-                    .language_id
-                    .clone()
-                    .unwrap_or_else(|| server_name.clone()),
-                vec![],
-            ));
-            let (_, servers) = entry;
-            servers.push(server_name.clone());
+    for (language_id, configs) in &config.language {
+        for config in configs.iter() {
+            for filetype in &config.filetypes {
+                let entry = filetypes
+                    .entry(filetype.clone())
+                    .or_insert((language_id.clone(), Vec::new()));
+                let (_, servers) = entry;
+                servers.push(
+                    config
+                        .server
+                        .clone()
+                        .unwrap_or_else(|| match servers.len() {
+                            i if i == 0 => language_id.clone(),
+                            i => format!("{language_id}-{i}"),
+                        }),
+                );
+            }
         }
     }
 

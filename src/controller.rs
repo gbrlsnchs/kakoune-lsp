@@ -45,7 +45,8 @@ pub fn start(
     for route in routes {
         {
             // should be fine to unwrap because request was already routed which means language is configured
-            let server_config = &config.language[&route.server_name];
+            let language = &config.language[language_id];
+            let server_config = language.find(language_id, &route.server_name).unwrap();
             let server_transport = match language_server_transport::start(
                 &server_config.command,
                 &server_config.args,
