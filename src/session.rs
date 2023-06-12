@@ -140,7 +140,8 @@ pub fn start(config: &Config, initial_request: Option<String>) -> i32 {
                             debug!("Spawning a new controller for {:#?}", routes);
                             controller_entry.insert(spawn_controller(
                                 config.clone(),
-                                routes[0],
+                                language_id.clone(),
+                                routes,
                                 request,
                                 editor.to_editor.sender().clone(),
                             ));
@@ -259,7 +260,8 @@ fn stop_session(controllers: &mut Controllers) {
 
 fn spawn_controller(
     config: Config,
-    route: Route,
+    language_id: LanguageId,
+    routes: Vec<Route>,
     request: EditorRequest,
     to_editor: Sender<EditorResponse>,
 ) -> ControllerHandle {
@@ -267,7 +269,7 @@ fn spawn_controller(
     let channel_capacity = 1024;
 
     let worker = Worker::spawn("Controller", channel_capacity, move |receiver, _| {
-        controller::start(to_editor, receiver, &route, request, config);
+        controller::start(to_editor, receiver, &language_id, &routes, request, config);
     });
 
     ControllerHandle { worker }
