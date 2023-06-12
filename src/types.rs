@@ -14,6 +14,7 @@ pub enum Void {}
 
 #[derive(Clone, Deserialize, Debug)]
 pub struct Config {
+    #[serde(alias = "language_server")]
     pub language: HashMap<ServerName, LanguageServerConfig>,
     #[serde(default)]
     pub server: ServerConfig,
@@ -27,7 +28,7 @@ pub struct Config {
 
 #[derive(Clone, Default, Deserialize, Debug)]
 pub struct DynamicConfig {
-    #[serde(default)]
+    #[serde(default, alias = "language_server")]
     pub language: HashMap<ServerName, DynamicLanguageServerConfig>,
 }
 
