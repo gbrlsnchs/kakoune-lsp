@@ -17,7 +17,7 @@ struct ControllerHandle {
     worker: Worker<EditorRequest, Void>,
 }
 
-type Controllers = HashMap<Route, ControllerHandle>;
+type Controllers = HashMap<Vec<Route>, ControllerHandle>;
 
 /// Start the main event loop.
 ///
@@ -88,8 +88,8 @@ pub fn start(config: &Config, initial_request: Option<String>) -> i32 {
                     continue 'event_loop;
                 }
 
-                let language_id = filetypes.get(&request.meta.filetype);
-                if language_id.is_none() {
+                let cfg = filetypes.get(&request.meta.filetype);
+                if cfg.is_none() {
                     let msg = format!(
                         "Language server is not configured for filetype `{}`",
                         &request.meta.filetype
@@ -99,19 +99,26 @@ pub fn start(config: &Config, initial_request: Option<String>) -> i32 {
 
                     continue 'event_loop;
                 }
-                let language_id = language_id.unwrap();
 
-                let root_path = find_project_root(language_id, &languages[language_id].roots, &request.meta.buffile);
-                let route = Route {
-                    session: request.meta.session.clone(),
-                    language: language_id.clone(),
-                    root: root_path.clone(),
-                };
+                let (language_id, servers) = cfg.unwrap();
+                let routes: Vec<_> = servers
+                    .iter()
+                    .map(|server_name| {
+                        let language  = &languages[server_name];
+                        let root = find_project_root(server_name, &language.roots, &request.meta.buffile);
+                        let route = Route {
+                            session: request.meta.session.clone(),
+                            server_name: server_name.clone(),
+                            root,
+                        };
 
-                debug!("Routing editor request to {:?}", route);
+                        debug!("Routing editor request to {:?}", route);
+                        route
+                    })
+                    .collect();
 
                 use std::collections::hash_map::Entry;
-                match controllers.entry(route.clone()) {
+                match controllers.entry(routes.clone()) {
                     Entry::Occupied(controller_entry) => {
                         if let Err(err) = controller_entry.get().worker.sender().send(request.clone())  {
                             error!("Failed to send message to controller: {}", err);
@@ -130,10 +137,10 @@ pub fn start(config: &Config, initial_request: Option<String>) -> i32 {
                         // get didClose message without running controller, unless it crashed
                         // before. In that case didClose can be safely ignored as well.
                         if request.method != notification::DidCloseTextDocument::METHOD {
-                            debug!("Spawning a new controller for {:?}", route);
+                            debug!("Spawning a new controller for {:#?}", routes);
                             controller_entry.insert(spawn_controller(
                                 config.clone(),
-                                route,
+                                routes[0],
                                 request,
                                 editor.to_editor.sender().clone(),
                             ));
@@ -211,9 +218,14 @@ fn exit_editor_session(controllers: &mut Controllers, request: &EditorRequest) {
         "Editor session `{}` closed, shutting down associated language servers",
         request.meta.session
     );
-    controllers.retain(|route, controller| {
-        if route.session == request.meta.session {
-            info!("Exit {} in project {}", route.language, route.root);
+    controllers.retain(|routes, controller| {
+        if routes
+            .iter()
+            .all(|route| route.session == request.meta.session)
+        {
+            for route in routes {
+                info!("Exit {} in project {}", route.server_name, route.root);
+            }
             // to notify kak-lsp about editor session end we use the same `exit` notification as
             // used in LSP spec to notify language server to exit, thus we can just clone request
             // and pass it along
@@ -235,11 +247,13 @@ fn stop_session(controllers: &mut Controllers) {
         params: toml::Value::Table(toml::value::Table::default()),
     };
     info!("Shutting down language servers and exiting");
-    for (route, controller) in controllers.drain() {
+    for (routes, controller) in controllers.drain() {
         if controller.worker.sender().send(request.clone()).is_err() {
             error!("Failed to send stop message to language server");
         }
-        info!("Exit {} in project {}", route.language, route.root);
+        for route in &routes {
+            info!("Exit {} in project {}", route.server_name, route.root);
+        }
     }
 }
 

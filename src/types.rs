@@ -14,7 +14,7 @@ pub enum Void {}
 
 #[derive(Clone, Deserialize, Debug)]
 pub struct Config {
-    pub language: HashMap<String, LanguageConfig>,
+    pub language: HashMap<ServerName, LanguageServerConfig>,
     #[serde(default)]
     pub server: ServerConfig,
     #[serde(default)]
@@ -28,7 +28,7 @@ pub struct Config {
 #[derive(Clone, Default, Deserialize, Debug)]
 pub struct DynamicConfig {
     #[serde(default)]
-    pub language: HashMap<String, DynamicLanguageConfig>,
+    pub language: HashMap<ServerName, DynamicLanguageServerConfig>,
 }
 
 #[derive(Clone, Default, Deserialize, Debug)]
@@ -41,7 +41,8 @@ pub struct ServerConfig {
 
 #[derive(Clone, Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
-pub struct LanguageConfig {
+pub struct LanguageServerConfig {
+    pub language_id: Option<LanguageId>,
     pub filetypes: Vec<String>,
     pub roots: Vec<String>,
     pub command: String,
@@ -58,7 +59,7 @@ pub struct LanguageConfig {
 
 #[derive(Clone, Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
-pub struct DynamicLanguageConfig {
+pub struct DynamicLanguageServerConfig {
     pub settings: Option<Value>,
 }
 
@@ -171,7 +172,7 @@ pub type RootPath = String;
 #[derive(PartialEq, Eq, Hash, Debug, Clone)]
 pub struct Route {
     pub session: SessionId,
-    pub language: LanguageId,
+    pub server_name: ServerName,
     pub root: RootPath,
 }
 
