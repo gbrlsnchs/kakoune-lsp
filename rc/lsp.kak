@@ -1178,17 +1178,17 @@ $([ -z ${kak_hook_param+x} ] || echo hook = true)
 " | eval "${kak_opt_lsp_cmd} --request") > /dev/null 2>&1 < /dev/null & }
 }
 
-define-command lsp-formatting -docstring "Format document" %{
-    lsp-formatting-request false
+define-command lsp-formatting -params ..1 -docstring "Format document" %{
+    lsp-formatting-request false %arg{1}
 }
 
-define-command lsp-formatting-sync -docstring "Format document, blocking Kakoune session until done" %{
+define-command lsp-formatting-sync -params ..1 -docstring "Format document, blocking Kakoune session until done" %{
     lsp-require-enabled lsp-formatting-sync
     lsp-did-change-sync
-    lsp-formatting-request true
+    lsp-formatting-request true %arg{1}
 }
 
-define-command -hidden lsp-formatting-request -params 1 %{ evaluate-commands -no-hooks %sh{
+define-command -hidden lsp-formatting-request -params 1..2 %{ evaluate-commands -no-hooks %sh{
     sync=$1
     fifo=""
     if "$sync"; then
@@ -1208,6 +1208,7 @@ filetype = \"${kak_opt_filetype}\"
 version  = ${kak_timestamp:-0}
 ${fifo}
 method   = \"textDocument/formatting\"
+$([ -z ${2} ] || echo server = \"${2}\")
 $([ -z ${kak_hook_param+x} ] || echo hook = true)
 [params]
 tabSize      = ${kak_opt_tabstop}
@@ -1220,17 +1221,17 @@ insertSpaces = ${kak_opt_lsp_insert_spaces}
     fi
 }}
 
-define-command lsp-range-formatting -docstring "Format selections" %{
-    lsp-range-formatting-request false
+define-command lsp-range-formatting -params ..1 -docstring "Format selections" %{
+    lsp-range-formatting-request false %arg{1}
 }
 
-define-command lsp-range-formatting-sync -docstring "Format selections, blocking Kakoune session until done" %{
+define-command lsp-range-formatting-sync -params ..1 -docstring "Format selections, blocking Kakoune session until done" %{
     lsp-require-enabled lsp-range-formatting-sync
     lsp-did-change-sync
-    lsp-range-formatting-request true
+    lsp-range-formatting-request true %arg{1}
 }
 
-define-command -hidden lsp-range-formatting-request -params 1 %{ evaluate-commands -no-hooks %sh{
+define-command -hidden lsp-range-formatting-request -params 1..2 %{ evaluate-commands -no-hooks %sh{
     sync=$1
     fifo=""
     if "$sync"; then
@@ -1267,6 +1268,7 @@ buffile  = \"${kak_buffile}\"
 filetype = \"${kak_opt_filetype}\"
 version  = ${kak_timestamp:-0}
 method   = \"textDocument/rangeFormatting\"
+$([ -z ${2} ] || echo server = \"${2}\")
 $([ -z ${kak_hook_param+x} ] || echo hook = true)
 ${fifo}
 [params]
@@ -1444,7 +1446,7 @@ $([ -z ${kak_hook_param+x} ] || echo hook = true)
 }
 
 # eclipse.jdt.ls Extension
-#
+
 define-command ejdtls-organize-imports -docstring "ejdtls-organize-imports: Organize imports." %{
     nop %sh{ (printf %s "
 session  = \"${kak_session}\"
@@ -1758,11 +1760,11 @@ define-command -hidden lsp-show-message-info -params 1 -docstring %{
     }
 }
 
-define-command -hidden lsp-show-message-log -params 1 -docstring %{
+define-command -hidden lsp-show-message-log -params 2 -docstring %{
     lsp-show-message-log <message>
     Render language server message of the "log" level.
 } %{
-    echo -debug "kak-lsp: log:" %arg{1}
+    echo -debug "kak-lsp: [%arg{1}] log:" %arg{2}
 }
 
 define-command -hidden lsp-show-message-request -params 4.. -docstring %{
