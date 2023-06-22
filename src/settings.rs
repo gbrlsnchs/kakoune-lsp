@@ -24,7 +24,7 @@ pub fn request_initialization_options_from_kakoune(
     request_dynamic_configuration_from_kakoune(meta, ctx);
     let settings = ctx
         .dynamic_config
-        .language
+        .language_server
         .get(&ctx.language_id)
         .and_then(|lang| lang.settings.as_ref());
     let settings = configured_section(ctx, settings);
@@ -37,14 +37,14 @@ pub fn request_initialization_options_from_kakoune(
         return legacy_settings;
     }
 
-    let lang = ctx.config.language.get(&ctx.language_id).unwrap();
+    let lang = ctx.config.language_server.get(&ctx.language_id).unwrap();
     configured_section(ctx, lang.settings.as_ref())
 }
 
 pub fn configured_section(ctx: &Context, settings: Option<&Value>) -> Option<Value> {
     settings.and_then(|settings| {
         ctx.config
-            .language
+            .language_server
             .get(&ctx.language_id)
             .and_then(|cfg| cfg.settings_section.as_ref())
             .and_then(|section| settings.get(section).cloned())

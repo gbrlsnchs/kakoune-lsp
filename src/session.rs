@@ -36,7 +36,7 @@ pub fn start(config: &Config, initial_request: Option<String>) -> i32 {
     }
     let editor = editor.unwrap();
 
-    let languages = config.language.clone();
+    let languages = config.language_server.clone();
     let filetypes = filetype_to_language_id_map(config);
 
     let mut controllers: Controllers = HashMap::default();
