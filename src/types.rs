@@ -23,6 +23,8 @@ pub struct Config {
     pub snippet_support: bool,
     #[serde(default)]
     pub semantic_tokens: SemanticTokenConfig,
+    #[serde(default)]
+    pub language_ids: HashMap<String, LanguageId>,
 }
 
 #[derive(Clone, Default, Deserialize, Debug)]
