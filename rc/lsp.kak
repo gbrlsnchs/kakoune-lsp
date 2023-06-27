@@ -1221,17 +1221,17 @@ insertSpaces = ${kak_opt_lsp_insert_spaces}
     fi
 }}
 
-define-command lsp-range-formatting -docstring "Format selections" %{
-    lsp-range-formatting-request false
+define-command lsp-range-formatting -params ..1 -docstring "Format selections" %{
+    lsp-range-formatting-request false %arg{1}
 }
 
-define-command lsp-range-formatting-sync -docstring "Format selections, blocking Kakoune session until done" %{
+define-command lsp-range-formatting-sync -params ..1 -docstring "Format selections, blocking Kakoune session until done" %{
     lsp-require-enabled lsp-range-formatting-sync
     lsp-did-change-sync
-    lsp-range-formatting-request true
+    lsp-range-formatting-request true %arg{1}
 }
 
-define-command -hidden lsp-range-formatting-request -params 1 %{ evaluate-commands -no-hooks %sh{
+define-command -hidden lsp-range-formatting-request -params 1..2 %{ evaluate-commands -no-hooks %sh{
     sync=$1
     fifo=""
     if "$sync"; then
@@ -1268,6 +1268,7 @@ buffile  = \"${kak_buffile}\"
 filetype = \"${kak_opt_filetype}\"
 version  = ${kak_timestamp:-0}
 method   = \"textDocument/rangeFormatting\"
+$([ -z ${2} ] || echo server = \"${2}\")
 $([ -z ${kak_hook_param+x} ] || echo hook = true)
 ${fifo}
 [params]
