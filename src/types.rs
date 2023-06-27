@@ -174,6 +174,7 @@ pub type RootPath = String;
 #[derive(PartialEq, Eq, Hash, Debug, Clone)]
 pub struct Route {
     pub session: SessionId,
+    pub server_name: ServerName,
     pub language: LanguageId,
     pub root: RootPath,
 }
