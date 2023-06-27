@@ -618,7 +618,10 @@ fn dispatch_editor_request(request: EditorRequest, ctx: &mut Context) {
             capabilities::capabilities(meta, ctx);
         }
         "apply-workspace-edit" => {
-            workspace::apply_edit_from_editor(meta, params, ctx);
+            let servers: Vec<_> = ctx.language_servers.keys().cloned().collect();
+            if let Some(server_name) = servers.first() {
+                workspace::apply_edit_from_editor(server_name, meta, params, ctx);
+            }
         }
         request::SemanticTokensFullRequest::METHOD => {
             semantic_tokens::tokens_request(meta, ctx);
@@ -691,7 +694,7 @@ fn dispatch_server_request(
     let method: &str = &request.method;
     let result = match method {
         request::ApplyWorkspaceEdit::METHOD => {
-            workspace::apply_edit_from_server(request.params, ctx)
+            workspace::apply_edit_from_server(server_name, request.params, ctx)
         }
         request::RegisterCapability::METHOD => {
             let params: RegistrationParams = request
@@ -702,6 +705,7 @@ fn dispatch_server_request(
                 match registration.method.as_str() {
                     notification::DidChangeWatchedFiles::METHOD => {
                         register_workspace_did_change_watched_files(
+                            server_name,
                             registration.register_options,
                             ctx,
                         )
@@ -717,6 +721,7 @@ fn dispatch_server_request(
             Ok(serde_json::Value::Null)
         }
         request::WorkspaceFoldersRequest::METHOD => {
+            let server = &ctx.language_servers[server_name];
             Ok(serde_json::to_value(vec![WorkspaceFolder {
                 uri: Url::from_file_path(&server.root_path).unwrap(),
                 name: server.root_path.to_string(),
@@ -727,7 +732,9 @@ fn dispatch_server_request(
         request::WorkDoneProgressCreate::METHOD => {
             progress::work_done_progress_create(request.params, ctx)
         }
-        request::WorkspaceConfiguration::METHOD => workspace::configuration(request.params, ctx),
+        request::WorkspaceConfiguration::METHOD => {
+            workspace::configuration(request.params, server_name, ctx)
+        }
         request::ShowMessageRequest::METHOD => {
             return show_message::show_message_request(meta, request, ctx);
         }
