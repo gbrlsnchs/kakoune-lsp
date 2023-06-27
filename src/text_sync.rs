@@ -19,22 +19,24 @@ use url::Url;
 pub fn text_document_did_open(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
     let params = TextDocumentDidOpenParams::deserialize(params)
         .expect("Params should follow TextDocumentDidOpenParams structure");
-    let language_id = ctx.language_id.clone();
+    let document = Document {
+        version: meta.version,
+        text: Rope::from_str(&params.draft),
+    };
+    ctx.documents.insert(meta.buffile.clone(), document);
+
     let params = DidOpenTextDocumentParams {
         text_document: TextDocumentItem {
             uri: Url::from_file_path(&meta.buffile).unwrap(),
-            language_id,
+            language_id: ctx.language_id.clone(),
             version: meta.version,
-            text: params.draft,
+            text: params.draft.clone(),
         },
     };
-    let document = Document {
-        version: meta.version,
-        text: Rope::from_str(&params.text_document.text),
-    };
-    ctx.documents.insert(meta.buffile.clone(), document);
-    let (server_name, _) = ctx.language_servers.first_key_value().unwrap();
-    ctx.notify::<DidOpenTextDocument>(&server_name.clone(), params);
+    let servers: Vec<_> = ctx.language_servers.keys().cloned().collect();
+    for server_name in &servers {
+        ctx.notify::<DidOpenTextDocument>(server_name, params.clone());
+    }
     text_document_code_lens(meta, ctx);
 }
 
@@ -55,8 +57,11 @@ pub fn text_document_did_change(meta: EditorMeta, params: EditorParams, ctx: &mu
         version,
         text: Rope::from_str(&params.draft),
     };
+
+    // Resets metadata for buffer.
     ctx.documents.insert(meta.buffile.clone(), document);
     ctx.diagnostics.insert(meta.buffile.clone(), Vec::new());
+
     let req_params = DidChangeTextDocumentParams {
         text_document: VersionedTextDocumentIdentifier {
             uri,
@@ -68,8 +73,10 @@ pub fn text_document_did_change(meta: EditorMeta, params: EditorParams, ctx: &mu
             text: params.draft,
         }],
     };
-    let (server_name, _) = ctx.language_servers.first_key_value().unwrap();
-    ctx.notify::<DidChangeTextDocument>(&server_name.clone(), req_params);
+    let servers: Vec<_> = ctx.language_servers.keys().cloned().collect();
+    for server_name in &servers {
+        ctx.notify::<DidChangeTextDocument>(server_name, req_params.clone());
+    }
     text_document_code_lens(meta, ctx);
 }
 
@@ -79,37 +86,40 @@ pub fn text_document_did_close(meta: EditorMeta, ctx: &mut Context) {
     let params = DidCloseTextDocumentParams {
         text_document: TextDocumentIdentifier { uri },
     };
-    let (server_name, _) = ctx.language_servers.first_key_value().unwrap();
-    ctx.notify::<DidCloseTextDocument>(&server_name.clone(), params);
+    let servers: Vec<_> = ctx.language_servers.keys().cloned().collect();
+    for server_name in &servers {
+        ctx.notify::<DidCloseTextDocument>(server_name, params.clone());
+    }
 }
 
 pub fn text_document_did_save(meta: EditorMeta, ctx: &mut Context) {
-    let (_, server) = ctx.language_servers.first_key_value().unwrap();
-    let text = match server.capabilities.as_ref().unwrap().text_document_sync {
-        Some(TextDocumentSyncCapability::Options(TextDocumentSyncOptions {
-            save:
-                Some(TextDocumentSyncSaveOptions::SaveOptions(SaveOptions {
-                    include_text: Some(true),
-                })),
-            ..
-        })) => ctx
-            .documents
-            .get(&meta.buffile)
-            .map(|doc| doc.text.to_string()),
-        _ => None,
-    };
+    let servers: Vec<_> = ctx.language_servers.keys().cloned().collect();
+    for server_name in &servers {
+        let server = &ctx.language_servers[server_name];
+        let text = match server.capabilities.as_ref().unwrap().text_document_sync {
+            Some(TextDocumentSyncCapability::Options(TextDocumentSyncOptions {
+                save:
+                    Some(TextDocumentSyncSaveOptions::SaveOptions(SaveOptions {
+                        include_text: Some(true),
+                    })),
+                ..
+            })) => ctx
+                .documents
+                .get(&meta.buffile)
+                .map(|doc| doc.text.to_string()),
+            _ => None,
+        };
 
-    let uri = Url::from_file_path(&meta.buffile).unwrap();
-    let params = DidSaveTextDocumentParams {
-        text_document: TextDocumentIdentifier { uri },
-        text,
-    };
-    let (server_name, _) = ctx.language_servers.first_key_value().unwrap();
-    ctx.notify::<DidSaveTextDocument>(&server_name.clone(), params);
+        let uri = Url::from_file_path(&meta.buffile).unwrap();
+        let params = DidSaveTextDocumentParams {
+            text_document: TextDocumentIdentifier { uri },
+            text,
+        };
+        ctx.notify::<DidSaveTextDocument>(server_name, params);
+    }
 }
 
 pub fn spawn_file_watcher(
-    root_path: String,
     watch_requests: HashMap<(ServerName, String, Option<PathBuf>), Vec<CompiledFileSystemWatcher>>,
 ) -> Worker<(), Vec<FileEvent>> {
     info!("starting file watcher");
@@ -118,7 +128,7 @@ pub fn spawn_file_watcher(
         1024, // arbitrary
         move |receiver: Receiver<()>, sender: Sender<Vec<FileEvent>>| {
             let mut watchers = Vec::new();
-            for ((_, _, path), path_watch_requests) in watch_requests {
+            for ((_, root_path, path), path_watch_requests) in watch_requests {
                 let sender = sender.clone();
                 let callback = move |res: notify::Result<notify::Event>| {
                     match res {
@@ -142,7 +152,7 @@ pub fn spawn_file_watcher(
                 };
                 let path = path.as_deref().unwrap_or_else(|| Path::new(&root_path));
                 if let Err(err) = watcher.watch(path, RecursiveMode::Recursive) {
-                    error!("{}", err);
+                    error!("{:?}: {}", path, err);
                 }
                 watchers.push(watcher);
             }
@@ -212,7 +222,11 @@ pub struct CompiledFileSystemWatcher {
     pattern: glob::Pattern,
 }
 
-pub fn register_workspace_did_change_watched_files(options: Option<Value>, ctx: &mut Context) {
+pub fn register_workspace_did_change_watched_files(
+    server_name: &ServerName,
+    options: Option<Value>,
+    ctx: &mut Context,
+) {
     let options = options.unwrap();
     let options = DidChangeWatchedFilesRegistrationOptions::deserialize(options).unwrap();
     assert!(ctx.pending_file_watchers.is_empty());
@@ -256,8 +270,9 @@ pub fn register_workspace_did_change_watched_files(options: Option<Value>, ctx: 
         };
         let default_watch_kind = WatchKind::Create | WatchKind::Change | WatchKind::Delete;
         let kind = watcher.kind.unwrap_or(default_watch_kind);
+        let server = &ctx.language_servers[server_name];
         ctx.pending_file_watchers
-            .entry(("".into(), "".into(), root_path))
+            .entry((server_name.clone(), server.root_path.clone(), root_path))
             .or_default()
             .push(CompiledFileSystemWatcher { kind, pattern });
     }

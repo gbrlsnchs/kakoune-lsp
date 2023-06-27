@@ -262,11 +262,18 @@ pub fn apply_edit(
     edit: WorkspaceEdit,
     ctx: &mut Context,
 ) -> ApplyWorkspaceEditResponse {
+    let (server_name, _) = ctx.language_servers.first_key_value().unwrap();
     if let Some(document_changes) = edit.document_changes {
         match document_changes {
             DocumentChanges::Edits(edits) => {
                 for edit in edits {
-                    apply_annotated_text_edits(&meta, edit.text_document.uri, edit.edits, ctx);
+                    apply_annotated_text_edits(
+                        server_name,
+                        &meta,
+                        edit.text_document.uri,
+                        edit.edits,
+                        ctx,
+                    );
                 }
             }
             DocumentChanges::Operations(ops) => {
@@ -274,6 +281,7 @@ pub fn apply_edit(
                     match op {
                         DocumentChangeOperation::Edit(edit) => {
                             apply_annotated_text_edits(
+                                server_name,
                                 &meta,
                                 edit.text_document.uri,
                                 edit.edits,
@@ -296,7 +304,7 @@ pub fn apply_edit(
         }
     } else if let Some(changes) = edit.changes {
         for (uri, change) in changes {
-            apply_text_edits(&meta, uri, change, ctx);
+            apply_text_edits(server_name, &meta, uri, change, ctx);
         }
     }
     ApplyWorkspaceEditResponse {

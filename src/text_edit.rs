@@ -66,13 +66,20 @@ impl TextEditish<OneOf<TextEdit, AnnotatedTextEdit>> for OneOf<TextEdit, Annotat
 
 /// Apply text edits to the file pointed by uri either by asking Kakoune to modify corresponding
 /// buffer or by editing file directly when it's not open in editor.
-pub fn apply_text_edits(meta: &EditorMeta, uri: Url, edits: Vec<TextEdit>, ctx: &mut Context) {
-    apply_annotated_text_edits(meta, uri, edits, ctx)
+pub fn apply_text_edits(
+    server_name: &ServerName,
+    meta: &EditorMeta,
+    uri: Url,
+    edits: Vec<TextEdit>,
+    ctx: &mut Context,
+) {
+    apply_annotated_text_edits(server_name, meta, uri, edits, ctx)
 }
 
 /// Apply text edits to the file pointed by uri either by asking Kakoune to modify corresponding
 /// buffer or by editing file directly when it's not open in editor.
 pub fn apply_annotated_text_edits<T: TextEditish<T>>(
+    server_name: &ServerName,
     meta: &EditorMeta,
     uri: Url,
     edits: Vec<T>,
@@ -80,7 +87,6 @@ pub fn apply_annotated_text_edits<T: TextEditish<T>>(
 ) {
     let path = uri.to_file_path().ok().unwrap();
     let buffile = path.to_str().unwrap();
-    let (_, server) = ctx.language_servers.first_key_value().unwrap();
     if let Some(document) = ctx.documents.get(buffile) {
         let meta = meta.clone();
         // Write hidden buffers unless they were already dirty.
@@ -88,6 +94,7 @@ pub fn apply_annotated_text_edits<T: TextEditish<T>>(
             && fs::read_to_string(buffile)
                 .map(|disk_contents| disk_contents == document.text)
                 .unwrap_or(false);
+        let server = &ctx.language_servers[server_name];
         match apply_text_edits_to_buffer(
             &meta.client,
             Some(uri),
@@ -101,12 +108,13 @@ pub fn apply_annotated_text_edits<T: TextEditish<T>>(
             // editor is blocked waiting for response via fifo.
             None => ctx.exec(meta, "nop"),
         }
-    } else if let Err(e) = apply_text_edits_to_file(&uri, edits, ctx) {
+    } else if let Err(e) = apply_text_edits_to_file(server_name, &uri, edits, ctx) {
         error!("Failed to apply edits to file {} ({})", &uri, e);
     }
 }
 
 pub fn apply_text_edits_to_file<T: TextEditish<T>>(
+    server_name: &ServerName,
     uri: &Url,
     text_edits: Vec<T>,
     ctx: &mut Context,
@@ -203,7 +211,7 @@ pub fn apply_text_edits_to_file<T: TextEditish<T>>(
         Ok(output)
     }
 
-    let (server_name, server) = ctx.language_servers.first_key_value().unwrap();
+    let server = &ctx.language_servers[server_name];
     match apply_text_edits_to_file_impl(text, temp_file, text_edits, server.offset_encoding) {
         Ok(updated_text) => {
             std::fs::rename(&temp_path, filename)?;
@@ -218,7 +226,7 @@ pub fn apply_text_edits_to_file<T: TextEditish<T>>(
                     text: String::from_utf8_lossy(&updated_text).to_string(),
                 },
             };
-            ctx.notify::<DidOpenTextDocument>(&server_name.clone(), params);
+            ctx.notify::<DidOpenTextDocument>(server_name, params);
             Ok(())
         }
         Err(e) => {
