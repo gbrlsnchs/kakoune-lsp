@@ -17,8 +17,9 @@ use lsp_types::*;
 use serde::Deserialize;
 
 pub fn text_document_code_lens(meta: EditorMeta, ctx: &mut Context) {
-    if !server_has_capability(ctx, CAPABILITY_CODE_LENS)
-        || !server_has_capability(ctx, CAPABILITY_EXECUTE_COMMANDS)
+    let (_, server) = ctx.language_servers.first_key_value().unwrap();
+    if !server_has_capability(server, CAPABILITY_CODE_LENS)
+        || !server_has_capability(server, CAPABILITY_EXECUTE_COMMANDS)
     {
         return;
     }

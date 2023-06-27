@@ -15,7 +15,8 @@ use serde::Deserialize;
 use url::Url;
 
 pub fn text_document_code_action(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
-    if meta.fifo.is_none() && !attempt_server_capability(ctx, &meta, CAPABILITY_CODE_ACTIONS) {
+    let entry = ctx.language_servers.first_key_value().unwrap();
+    if meta.fifo.is_none() && !attempt_server_capability(entry, &meta, CAPABILITY_CODE_ACTIONS) {
         return;
     }
 
@@ -33,7 +34,7 @@ pub fn text_document_code_action(meta: EditorMeta, params: EditorParams, ctx: &m
             return;
         }
     };
-    let (_, server) = ctx.language_servers.first_key_value().unwrap();
+    let (_, server) = entry;
     let range = kakoune_range_to_lsp(
         &parse_kakoune_range(&params.selection_desc).0,
         &document.text,
@@ -118,7 +119,8 @@ fn editor_code_actions(
         }
     }
 
-    let may_resolve = attempt_server_capability(ctx, &meta, CAPABILITY_CODE_ACTIONS_RESOLVE);
+    let entry = ctx.language_servers.first_key_value().unwrap();
+    let may_resolve = attempt_server_capability(entry, &meta, CAPABILITY_CODE_ACTIONS_RESOLVE);
 
     if let Some(pattern) = params.code_action_pattern.as_ref() {
         let regex = match regex::Regex::new(pattern) {

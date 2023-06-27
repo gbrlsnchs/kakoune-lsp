@@ -21,7 +21,8 @@ struct InlayHintsOptions {
 }
 
 pub fn inlay_hints(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
-    if meta.fifo.is_none() && !attempt_server_capability(ctx, &meta, CAPABILITY_INLAY_HINTS) {
+    let entry = ctx.language_servers.first_key_value().unwrap();
+    if meta.fifo.is_none() && !attempt_server_capability(entry, &meta, CAPABILITY_INLAY_HINTS) {
         return;
     }
 
