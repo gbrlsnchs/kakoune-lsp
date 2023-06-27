@@ -760,7 +760,7 @@ fn dispatch_server_notification(
             cquery::publish_semantic_highlighting(params, ctx);
         }
         "$ccls/publishSemanticHighlight" => {
-            ccls::publish_semantic_highlighting(params, ctx);
+            ccls::publish_semantic_highlighting(server_name, params, ctx);
         }
         notification::Exit::METHOD => {
             debug!("Language server exited");
