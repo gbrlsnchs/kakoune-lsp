@@ -568,8 +568,12 @@ fn dispatch_editor_request(request: EditorRequest, ctx: &mut Context) {
             goto::text_document_references(meta, params, ctx);
         }
         notification::Exit::METHOD => {
-            ctx.notify::<notification::Exit>(());
+            let servers: Vec<_> = ctx.language_servers.keys().cloned().collect();
+            for server_name in &servers {
+                ctx.notify::<notification::Exit>(server_name, ());
+            }
         }
+
         notification::WorkDoneProgressCancel::METHOD => {
             progress::work_done_progress_cancel(meta, params, ctx);
         }
@@ -767,7 +771,7 @@ fn dispatch_server_notification(
             ccls::publish_semantic_highlighting(server_name, params, ctx);
         }
         notification::Exit::METHOD => {
-            debug!("Language server exited");
+            debug!("{server_name} language server exited");
         }
         notification::ShowMessage::METHOD => {
             let params: ShowMessageParams = params
