@@ -1760,11 +1760,11 @@ define-command -hidden lsp-show-message-info -params 1 -docstring %{
     }
 }
 
-define-command -hidden lsp-show-message-log -params 1 -docstring %{
+define-command -hidden lsp-show-message-log -params 2 -docstring %{
     lsp-show-message-log <message>
     Render language server message of the "log" level.
 } %{
-    echo -debug "kak-lsp: log:" %arg{1}
+    echo -debug "kak-lsp: [%arg{1}] log:" %arg{2}
 }
 
 define-command -hidden lsp-show-message-request -params 4.. -docstring %{
