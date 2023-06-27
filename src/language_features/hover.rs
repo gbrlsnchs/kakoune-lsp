@@ -28,6 +28,7 @@ pub fn text_document_hover(meta: EditorMeta, params: EditorParams, ctx: &mut Con
         None => HoverType::InfoBox,
     };
 
+    let (_, server) = ctx.language_servers.first_key_value().unwrap();
     let params = EditorHoverParams::deserialize(params).unwrap();
     let (range, cursor) = parse_kakoune_range(&params.selection_desc);
     let req_params = HoverParams {
@@ -35,7 +36,7 @@ pub fn text_document_hover(meta: EditorMeta, params: EditorParams, ctx: &mut Con
             text_document: TextDocumentIdentifier {
                 uri: Url::from_file_path(&meta.buffile).unwrap(),
             },
-            position: get_lsp_position(&meta.buffile, &cursor, ctx).unwrap(),
+            position: get_lsp_position(server, &meta.buffile, &cursor, ctx).unwrap(),
         },
         work_done_progress_params: Default::default(),
     };

@@ -140,24 +140,24 @@ fn editor_workspace_symbol(
     result: Option<WorkspaceSymbolResponse>,
     ctx: &mut Context,
 ) {
+    let (_, server) = ctx.language_servers.first_key_value().unwrap();
     let content = match result {
         Some(WorkspaceSymbolResponse::Flat(result)) => {
             if result.is_empty() {
                 return;
             }
-            document_symbol::format_symbol(result, false, &meta, ctx)
+            document_symbol::format_symbol(result, false, &meta, server, ctx)
         }
         Some(WorkspaceSymbolResponse::Nested(result)) => {
             if result.is_empty() {
                 return;
             }
-            document_symbol::format_symbol(result, false, &meta, ctx)
+            document_symbol::format_symbol(result, false, &meta, server, ctx)
         }
         None => {
             return;
         }
     };
-    let (_, server) = ctx.language_servers.first_key_value().unwrap();
     let command = format!(
         "lsp-show-workspace-symbol {} {}",
         editor_quote(&server.root_path),

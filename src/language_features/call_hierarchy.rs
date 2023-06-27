@@ -7,9 +7,10 @@ use lsp_types::{request::*, *};
 use serde::Deserialize;
 
 pub fn call_hierarchy_prepare(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
+    let (_, server) = ctx.language_servers.first_key_value().unwrap();
     let params = CallHierarchyParams::deserialize(params)
         .expect("Params should follow CallHierarchyParams structure");
-    let position = get_lsp_position(&meta.buffile, &params.position, ctx).unwrap();
+    let position = get_lsp_position(server, &meta.buffile, &params.position, ctx).unwrap();
     let uri = Url::from_file_path(&meta.buffile).unwrap();
     let prepare_params = CallHierarchyPrepareParams {
         text_document_position_params: TextDocumentPositionParams {
@@ -88,7 +89,7 @@ fn format_location(
     let (_, server) = ctx.language_servers.first_key_value().unwrap();
     let filename = uri.to_file_path().unwrap();
     let filename = short_file_path(filename.to_str().unwrap(), &server.root_path);
-    let position = get_kakoune_position_with_fallback(&meta.buffile, position, ctx);
+    let position = get_kakoune_position_with_fallback(server, &meta.buffile, position, ctx);
     format!(
         "{}{}:{}:{}: {}\n",
         prefix, filename, position.line, position.column, suffix,

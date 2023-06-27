@@ -12,9 +12,9 @@ use serde::Deserialize;
 use url::Url;
 
 pub fn text_document_highlight(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
-    let entry = ctx.language_servers.first_key_value().unwrap();
+    let (server_name, server) = ctx.language_servers.first_key_value().unwrap();
     if meta.fifo.is_none()
-        && !attempt_server_capability(entry, &meta, CAPABILITY_DOCUMENT_HIGHLIGHT)
+        && !attempt_server_capability((server_name, server), &meta, CAPABILITY_DOCUMENT_HIGHLIGHT)
     {
         return;
     }
@@ -25,7 +25,7 @@ pub fn text_document_highlight(meta: EditorMeta, params: EditorParams, ctx: &mut
             text_document: TextDocumentIdentifier {
                 uri: Url::from_file_path(&meta.buffile).unwrap(),
             },
-            position: get_lsp_position(&meta.buffile, &params.position, ctx).unwrap(),
+            position: get_lsp_position(server, &meta.buffile, &params.position, ctx).unwrap(),
         },
         partial_result_params: Default::default(),
         work_done_progress_params: Default::default(),

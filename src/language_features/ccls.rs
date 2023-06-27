@@ -35,12 +35,13 @@ impl Request for NavigateRequest {
 }
 
 pub fn navigate(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
+    let (_, server) = ctx.language_servers.first_key_value().unwrap();
     let params = KakouneNavigateParams::deserialize(params).unwrap();
     let req_params = NavigateParams {
         text_document: TextDocumentIdentifier {
             uri: Url::from_file_path(&meta.buffile).unwrap(),
         },
-        position: get_lsp_position(&meta.buffile, &params.position, ctx).unwrap(),
+        position: get_lsp_position(server, &meta.buffile, &params.position, ctx).unwrap(),
         direction: params.direction,
     };
     ctx.call::<NavigateRequest, _>(
@@ -75,12 +76,13 @@ impl Request for VarsRequest {
 }
 
 pub fn vars(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
+    let (_, server) = ctx.language_servers.first_key_value().unwrap();
     let params = PositionParams::deserialize(params).unwrap();
     let req_params = VarsParams {
         text_document: TextDocumentIdentifier {
             uri: Url::from_file_path(&meta.buffile).unwrap(),
         },
-        position: get_lsp_position(&meta.buffile, &params.position, ctx).unwrap(),
+        position: get_lsp_position(server, &meta.buffile, &params.position, ctx).unwrap(),
     };
     ctx.call::<VarsRequest, _>(
         meta,
@@ -120,12 +122,13 @@ impl Request for InheritanceRequest {
 }
 
 pub fn inheritance(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
+    let (_, server) = ctx.language_servers.first_key_value().unwrap();
     let params = KakouneInheritanceParams::deserialize(params).unwrap();
     let req_params = InheritanceParams {
         text_document: TextDocumentIdentifier {
             uri: Url::from_file_path(&meta.buffile).unwrap(),
         },
-        position: get_lsp_position(&meta.buffile, &params.position, ctx).unwrap(),
+        position: get_lsp_position(server, &meta.buffile, &params.position, ctx).unwrap(),
         levels: params.levels,
         derived: params.derived,
     };
@@ -165,12 +168,13 @@ impl Request for CallRequest {
 }
 
 pub fn call(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
+    let (_, server) = ctx.language_servers.first_key_value().unwrap();
     let params = KakouneCallParams::deserialize(params).unwrap();
     let req_params = CallParams {
         text_document: TextDocumentIdentifier {
             uri: Url::from_file_path(&meta.buffile).unwrap(),
         },
-        position: get_lsp_position(&meta.buffile, &params.position, ctx).unwrap(),
+        position: get_lsp_position(server, &meta.buffile, &params.position, ctx).unwrap(),
         callee: params.callee,
     };
     ctx.call::<CallRequest, _>(
@@ -209,12 +213,13 @@ impl Request for MemberRequest {
 }
 
 pub fn member(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
+    let (_, server) = ctx.language_servers.first_key_value().unwrap();
     let params = KakouneMemberParams::deserialize(params).unwrap();
     let req_params = MemberParams {
         text_document: TextDocumentIdentifier {
             uri: Url::from_file_path(&meta.buffile).unwrap(),
         },
-        position: get_lsp_position(&meta.buffile, &params.position, ctx).unwrap(),
+        position: get_lsp_position(server, &meta.buffile, &params.position, ctx).unwrap(),
         kind: params.kind,
     };
     ctx.call::<MemberRequest, _>(

@@ -105,13 +105,14 @@ pub fn text_document_definition(
     params: EditorParams,
     ctx: &mut Context,
 ) {
+    let (_, server) = ctx.language_servers.first_key_value().unwrap();
     let params = PositionParams::deserialize(params).unwrap();
     let req_params = GotoDefinitionParams {
         text_document_position_params: TextDocumentPositionParams {
             text_document: TextDocumentIdentifier {
                 uri: Url::from_file_path(&meta.buffile).unwrap(),
             },
-            position: get_lsp_position(&meta.buffile, &params.position, ctx).unwrap(),
+            position: get_lsp_position(server, &meta.buffile, &params.position, ctx).unwrap(),
         },
         partial_result_params: Default::default(),
         work_done_progress_params: Default::default(),
@@ -140,13 +141,14 @@ pub fn text_document_definition(
 }
 
 pub fn text_document_implementation(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
+    let (_, server) = ctx.language_servers.first_key_value().unwrap();
     let params = PositionParams::deserialize(params).unwrap();
     let req_params = GotoDefinitionParams {
         text_document_position_params: TextDocumentPositionParams {
             text_document: TextDocumentIdentifier {
                 uri: Url::from_file_path(&meta.buffile).unwrap(),
             },
-            position: get_lsp_position(&meta.buffile, &params.position, ctx).unwrap(),
+            position: get_lsp_position(server, &meta.buffile, &params.position, ctx).unwrap(),
         },
         partial_result_params: Default::default(),
         work_done_progress_params: Default::default(),
@@ -163,13 +165,14 @@ pub fn text_document_implementation(meta: EditorMeta, params: EditorParams, ctx:
 }
 
 pub fn text_document_type_definition(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
+    let (_, server) = ctx.language_servers.first_key_value().unwrap();
     let params = PositionParams::deserialize(params).unwrap();
     let req_params = GotoDefinitionParams {
         text_document_position_params: TextDocumentPositionParams {
             text_document: TextDocumentIdentifier {
                 uri: Url::from_file_path(&meta.buffile).unwrap(),
             },
-            position: get_lsp_position(&meta.buffile, &params.position, ctx).unwrap(),
+            position: get_lsp_position(server, &meta.buffile, &params.position, ctx).unwrap(),
         },
         partial_result_params: Default::default(),
         work_done_progress_params: Default::default(),
@@ -186,13 +189,14 @@ pub fn text_document_type_definition(meta: EditorMeta, params: EditorParams, ctx
 }
 
 pub fn text_document_references(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
+    let (_, server) = ctx.language_servers.first_key_value().unwrap();
     let params = PositionParams::deserialize(params).unwrap();
     let req_params = ReferenceParams {
         text_document_position: TextDocumentPositionParams {
             text_document: TextDocumentIdentifier {
                 uri: Url::from_file_path(&meta.buffile).unwrap(),
             },
-            position: get_lsp_position(&meta.buffile, &params.position, ctx).unwrap(),
+            position: get_lsp_position(server, &meta.buffile, &params.position, ctx).unwrap(),
         },
         context: ReferenceContext {
             include_declaration: true,

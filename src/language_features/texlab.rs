@@ -39,12 +39,13 @@ impl fmt::Display for ForwardSearchResult {
 }
 
 pub fn forward_search(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
+    let (_, server) = ctx.language_servers.first_key_value().unwrap();
     let params = PositionParams::deserialize(params).unwrap();
     let req_params = TextDocumentPositionParams {
         text_document: TextDocumentIdentifier {
             uri: Url::from_file_path(&meta.buffile).unwrap(),
         },
-        position: get_lsp_position(&meta.buffile, &params.position, ctx).unwrap(),
+        position: get_lsp_position(server, &meta.buffile, &params.position, ctx).unwrap(),
     };
     ctx.call::<ForwardSearch, _>(
         meta,

@@ -219,7 +219,7 @@ pub fn editor_diagnostics(meta: EditorMeta, ctx: &mut Context) {
             diagnostics
                 .iter()
                 .map(|(_, x)| {
-                    let p = match get_kakoune_position(filename, &x.range.start, ctx) {
+                    let p = match get_kakoune_position(server, filename, &x.range.start, ctx) {
                         Some(position) => position,
                         None => {
                             warn!("Cannot get position from file {}", filename);
@@ -266,6 +266,7 @@ pub fn format_related_information(d: &Diagnostic, ctx: &Context) -> Option<Strin
                     let path = info.location.uri.to_file_path().unwrap();
                     let filename = path.to_str().unwrap();
                     let p = get_kakoune_position_with_fallback(
+                        server,
                         filename,
                         info.location.range.start,
                         ctx,
