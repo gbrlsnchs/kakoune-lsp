@@ -112,7 +112,7 @@ pub fn start(
             .collect(),
     });
 
-    initialize(&routes[0].root, initial_request_meta.clone(), &mut ctx);
+    initialize(initial_request_meta.clone(), &mut ctx);
 
     struct FileWatcher {
         pending_file_events: HashSet<FileEvent>,
@@ -412,7 +412,7 @@ pub fn start(
             }
             file_watcher = Some(FileWatcher {
                 pending_file_events: HashSet::new(),
-                worker: spawn_file_watcher(routes[0].root.clone(), requested_watchers),
+                worker: spawn_file_watcher(requested_watchers),
             });
         }
     }
@@ -511,8 +511,6 @@ fn dispatch_incoming_editor_request(request: EditorRequest, ctx: &mut Context) {
 }
 
 fn dispatch_editor_request(request: EditorRequest, ctx: &mut Context) {
-    let (server_name, _) = ctx.language_servers.first_key_value().unwrap();
-    let server_name = server_name.clone();
     ensure_did_open(&request, ctx);
     let method: &str = &request.method;
     let meta = request.meta;
@@ -570,7 +568,7 @@ fn dispatch_editor_request(request: EditorRequest, ctx: &mut Context) {
             goto::text_document_references(meta, params, ctx);
         }
         notification::Exit::METHOD => {
-            ctx.notify::<notification::Exit>(&server_name, ());
+            ctx.notify::<notification::Exit>(());
         }
         notification::WorkDoneProgressCancel::METHOD => {
             progress::work_done_progress_cancel(meta, params, ctx);
@@ -690,7 +688,6 @@ fn dispatch_server_request(
     request: MethodCall,
     ctx: &mut Context,
 ) {
-    let (_, server) = ctx.language_servers.first_key_value().unwrap();
     let method: &str = &request.method;
     let result = match method {
         request::ApplyWorkspaceEdit::METHOD => {
