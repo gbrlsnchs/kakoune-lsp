@@ -754,7 +754,7 @@ fn dispatch_server_notification(
             progress::dollar_progress(meta, params, ctx);
         }
         notification::PublishDiagnostics::METHOD => {
-            diagnostics::publish_diagnostics(params, ctx);
+            diagnostics::publish_diagnostics(server_name, params, ctx);
         }
         "$cquery/publishSemanticHighlighting" => {
             cquery::publish_semantic_highlighting(params, ctx);

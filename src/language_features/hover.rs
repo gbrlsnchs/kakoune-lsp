@@ -61,7 +61,7 @@ pub fn editor_hover(
     ctx: &mut Context,
 ) {
     let doc = &ctx.documents[&meta.buffile];
-    let (_, server) = ctx.language_servers.first_key_value().unwrap();
+    let (server_name, server) = ctx.language_servers.first_key_value().unwrap();
     let lsp_range = kakoune_range_to_lsp(&range, &doc.text, server.offset_encoding);
     let for_hover_buffer = matches!(hover_type, HoverType::HoverBuffer { .. });
     let diagnostics = ctx.diagnostics.get(&meta.buffile);
@@ -73,7 +73,7 @@ pub fn editor_hover(
                 .map(|(_, x)| {
                     // Indent line breaks to the same level as the bullet point
                     let message = (x.message.trim().to_string()
-                        + &format_related_information(x, ctx)
+                        + &format_related_information(x, (server_name, server), server, ctx)
                             .map(|s| "\n  ".to_string() + &s)
                             .unwrap_or_default())
                         .replace('\n', "\n  ");
