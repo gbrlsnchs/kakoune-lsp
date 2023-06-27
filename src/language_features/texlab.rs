@@ -8,6 +8,7 @@ use lsp_types::TextDocumentPositionParams;
 use lsp_types::Url;
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
+use std::collections::HashMap;
 use std::fmt;
 
 pub enum ForwardSearch {}
@@ -39,26 +40,42 @@ impl fmt::Display for ForwardSearchResult {
 }
 
 pub fn forward_search(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
-    let (_, server) = ctx.language_servers.first_key_value().unwrap();
     let params = PositionParams::deserialize(params).unwrap();
-    let req_params = TextDocumentPositionParams {
-        text_document: TextDocumentIdentifier {
-            uri: Url::from_file_path(&meta.buffile).unwrap(),
-        },
-        position: get_lsp_position(server, &meta.buffile, &params.position, ctx).unwrap(),
-    };
+
+    let req_params = ctx
+        .language_servers
+        .iter()
+        .map(|(server_name, server_settings)| {
+            (
+                server_name.clone(),
+                vec![TextDocumentPositionParams {
+                    text_document: TextDocumentIdentifier {
+                        uri: Url::from_file_path(&meta.buffile).unwrap(),
+                    },
+                    position: get_lsp_position(
+                        server_settings,
+                        &meta.buffile,
+                        &params.position,
+                        ctx,
+                    )
+                    .unwrap(),
+                }],
+            )
+        })
+        .collect();
+
     ctx.call::<ForwardSearch, _>(
         meta,
-        RequestParams::All(vec![req_params]),
-        move |ctx, meta, mut response| {
-            if let Some((_, response)) = response.pop() {
+        RequestParams::Each(req_params),
+        move |ctx, meta, results| {
+            if let Some((_, response)) = results.first() {
                 forward_search_response(meta, response, ctx)
             }
         },
     );
 }
 
-pub fn forward_search_response(meta: EditorMeta, result: ForwardSearchResult, ctx: &mut Context) {
+pub fn forward_search_response(meta: EditorMeta, result: &ForwardSearchResult, ctx: &mut Context) {
     let command = format!("echo {}", result);
     ctx.exec(meta, command);
 }
@@ -98,23 +115,33 @@ impl fmt::Display for BuildResult {
 }
 
 pub fn build(meta: EditorMeta, _params: EditorParams, ctx: &mut Context) {
-    let req_params = BuildTextDocumentParams {
-        text_document: TextDocumentIdentifier {
-            uri: Url::from_file_path(&meta.buffile).unwrap(),
-        },
-    };
+    let (server_name, _) = meta
+        .server
+        .as_ref()
+        .and_then(|name| ctx.language_servers.get_key_value(name))
+        .or_else(|| ctx.language_servers.first_key_value())
+        .unwrap();
+    let mut req_params = HashMap::new();
+    req_params.insert(
+        server_name.clone(),
+        vec![BuildTextDocumentParams {
+            text_document: TextDocumentIdentifier {
+                uri: Url::from_file_path(&meta.buffile).unwrap(),
+            },
+        }],
+    );
     ctx.call::<Build, _>(
         meta,
-        RequestParams::All(vec![req_params]),
-        move |ctx, meta, mut response| {
-            if let Some((_, response)) = response.pop() {
+        RequestParams::Each(req_params),
+        move |ctx, meta, results| {
+            if let Some((_, response)) = results.first() {
                 build_response(meta, response, ctx)
             }
         },
     );
 }
 
-pub fn build_response(meta: EditorMeta, result: BuildResult, ctx: &mut Context) {
+pub fn build_response(meta: EditorMeta, result: &BuildResult, ctx: &mut Context) {
     let command = format!("echo {}", result);
     ctx.exec(meta, command);
 }
