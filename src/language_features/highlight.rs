@@ -1,5 +1,5 @@
 use crate::capabilities::{attempt_server_capability, CAPABILITY_DOCUMENT_HIGHLIGHT};
-use crate::context::Context;
+use crate::context::{Context, RequestParams};
 use crate::position::*;
 use crate::types::{EditorMeta, EditorParams, KakounePosition, KakouneRange, PositionParams};
 use crate::util::editor_quote;
@@ -30,9 +30,11 @@ pub fn text_document_highlight(meta: EditorMeta, params: EditorParams, ctx: &mut
     };
     ctx.call::<DocumentHighlightRequest, _>(
         meta,
-        req_params,
-        move |ctx: &mut Context, meta, result| {
-            editor_document_highlight(meta, result, params.position, ctx)
+        RequestParams::All(vec![req_params]),
+        move |ctx: &mut Context, meta, mut result| {
+            if let Some((_, result)) = result.pop() {
+                editor_document_highlight(meta, result, params.position, ctx)
+            }
         },
     );
 }
@@ -48,13 +50,14 @@ fn editor_document_highlight(
         return;
     }
     let document = document.unwrap();
+    let (_, server) = ctx.language_servers.first_key_value().unwrap();
     let mut ranges = vec![];
     let range_specs = match result {
         Some(highlights) => highlights
             .into_iter()
             .map(|highlight| {
                 let range =
-                    lsp_range_to_kakoune(&highlight.range, &document.text, ctx.offset_encoding);
+                    lsp_range_to_kakoune(&highlight.range, &document.text, server.offset_encoding);
                 ranges.push(range);
                 format!(
                     "{}|{}",

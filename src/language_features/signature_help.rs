@@ -29,8 +29,12 @@ pub fn text_document_signature_help(meta: EditorMeta, params: EditorParams, ctx:
     };
     ctx.call::<SignatureHelpRequest, _>(
         meta,
-        req_params,
-        move |ctx: &mut Context, meta, result| editor_signature_help(meta, params, result, ctx),
+        RequestParams::All(vec![req_params]),
+        move |ctx: &mut Context, meta, mut result| {
+            if let Some((_, result)) = result.pop() {
+                editor_signature_help(meta, params, result, ctx)
+            }
+        },
     );
 }
 
@@ -56,6 +60,7 @@ fn editor_signature_help(
         .active_parameter
         .or(result.active_parameter)
         .unwrap_or(0);
+    let (_, server) = ctx.language_servers.first_key_value().unwrap();
     let parameter_range = match active_signature
         .parameters
         .as_ref()
@@ -71,13 +76,13 @@ fn editor_signature_help(
             let begin = lsp_character_to_byte_offset(
                 label.slice(..),
                 offsets[0] as usize,
-                ctx.offset_encoding,
+                server.offset_encoding,
             )
             .unwrap();
             let end = lsp_character_to_byte_offset(
                 label.slice(..),
                 offsets[1] as usize,
-                ctx.offset_encoding,
+                server.offset_encoding,
             )
             .unwrap();
             Some([begin, end])

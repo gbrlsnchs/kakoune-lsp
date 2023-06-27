@@ -1,4 +1,4 @@
-use crate::context::Context;
+use crate::context::{Context, RequestParams};
 use crate::position::get_lsp_position;
 use crate::types::{EditorMeta, EditorParams};
 use crate::PositionParams;
@@ -46,9 +46,15 @@ pub fn forward_search(meta: EditorMeta, params: EditorParams, ctx: &mut Context)
         },
         position: get_lsp_position(&meta.buffile, &params.position, ctx).unwrap(),
     };
-    ctx.call::<ForwardSearch, _>(meta, req_params, move |ctx, meta, response| {
-        forward_search_response(meta, response, ctx)
-    });
+    ctx.call::<ForwardSearch, _>(
+        meta,
+        RequestParams::All(vec![req_params]),
+        move |ctx, meta, mut response| {
+            if let Some((_, response)) = response.pop() {
+                forward_search_response(meta, response, ctx)
+            }
+        },
+    );
 }
 
 pub fn forward_search_response(meta: EditorMeta, result: ForwardSearchResult, ctx: &mut Context) {
@@ -64,7 +70,7 @@ impl Request for Build {
     const METHOD: &'static str = "textDocument/build";
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct BuildTextDocumentParams {
     text_document: TextDocumentIdentifier,
@@ -96,9 +102,15 @@ pub fn build(meta: EditorMeta, _params: EditorParams, ctx: &mut Context) {
             uri: Url::from_file_path(&meta.buffile).unwrap(),
         },
     };
-    ctx.call::<Build, _>(meta, req_params, move |ctx, meta, response| {
-        build_response(meta, response, ctx)
-    });
+    ctx.call::<Build, _>(
+        meta,
+        RequestParams::All(vec![req_params]),
+        move |ctx, meta, mut response| {
+            if let Some((_, response)) = response.pop() {
+                build_response(meta, response, ctx)
+            }
+        },
+    );
 }
 
 pub fn build_response(meta: EditorMeta, result: BuildResult, ctx: &mut Context) {

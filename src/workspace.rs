@@ -49,7 +49,8 @@ pub fn did_change_configuration(meta: EditorMeta, mut params: EditorParams, ctx:
     });
 
     let params = DidChangeConfigurationParams { settings };
-    ctx.notify::<DidChangeConfiguration>(params);
+    let (server_name, _) = ctx.language_servers.first_key_value().unwrap();
+    ctx.notify::<DidChangeConfiguration>(&server_name.clone(), params);
 }
 
 pub fn configuration(params: Params, ctx: &mut Context) -> Result<Value, jsonrpc_core::Error> {
@@ -94,9 +95,15 @@ pub fn configuration(params: Params, ctx: &mut Context) -> Result<Value, jsonrpc
 pub fn workspace_symbol(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
     let params = WorkspaceSymbolParams::deserialize(params)
         .expect("Params should follow WorkspaceSymbolParams structure");
-    ctx.call::<WorkspaceSymbolRequest, _>(meta, params, move |ctx: &mut Context, meta, result| {
-        editor_workspace_symbol(meta, result, ctx)
-    });
+    ctx.call::<WorkspaceSymbolRequest, _>(
+        meta,
+        RequestParams::All(vec![params]),
+        move |ctx: &mut Context, meta, mut result| {
+            if let Some((_, result)) = result.pop() {
+                editor_workspace_symbol(meta, result, ctx)
+            }
+        },
+    );
 }
 
 impl document_symbol::Symbol<WorkspaceSymbol> for WorkspaceSymbol {
@@ -150,9 +157,10 @@ fn editor_workspace_symbol(
             return;
         }
     };
+    let (_, server) = ctx.language_servers.first_key_value().unwrap();
     let command = format!(
         "lsp-show-workspace-symbol {} {}",
-        editor_quote(&ctx.root_path),
+        editor_quote(&server.root_path),
         editor_quote(&content),
     );
     ctx.exec(meta, command);
@@ -178,7 +186,11 @@ pub fn execute_command(meta: EditorMeta, params: EditorParams, ctx: &mut Context
             rust_analyzer::apply_source_change(meta, req_params, ctx);
         }
         _ => {
-            ctx.call::<ExecuteCommand, _>(meta, req_params, move |_: &mut Context, _, _| ());
+            ctx.call::<ExecuteCommand, _>(
+                meta,
+                RequestParams::All(vec![req_params]),
+                move |_: &mut Context, _, _| (),
+            );
         }
     }
 }

@@ -15,10 +15,12 @@ pub fn organize_imports(meta: EditorMeta, ctx: &mut Context) {
     };
     ctx.call::<ExecuteCommand, _>(
         meta,
-        req_params,
-        move |ctx: &mut Context, meta, response| {
-            if let Some(response) = response {
-                organize_imports_response(meta, serde_json::from_value(response).unwrap(), ctx);
+        RequestParams::All(vec![req_params]),
+        move |ctx: &mut Context, meta, mut response| {
+            if let Some((_, response)) = response.pop() {
+                if let Some(response) = response {
+                    organize_imports_response(meta, serde_json::from_value(response).unwrap(), ctx);
+                }
             }
         },
     );

@@ -8,7 +8,7 @@ use serde::Deserialize;
 
 use crate::{
     capabilities::{attempt_server_capability, CAPABILITY_INLAY_HINTS},
-    context::Context,
+    context::{Context, RequestParams},
     markup::escape_kakoune_markup,
     position::lsp_position_to_kakoune,
     types::{EditorMeta, EditorParams},
@@ -33,9 +33,15 @@ pub fn inlay_hints(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
         },
         range: Range::new(Position::new(0, 0), Position::new(params.buf_line_count, 0)),
     };
-    ctx.call::<InlayHintRequest, _>(meta, req_params, move |ctx, meta, response| {
-        inlay_hints_response(meta, response.unwrap_or_default(), ctx)
-    });
+    ctx.call::<InlayHintRequest, _>(
+        meta,
+        RequestParams::All(vec![req_params]),
+        move |ctx, meta, mut response| {
+            if let Some((_, response)) = response.pop() {
+                inlay_hints_response(meta, response.unwrap_or_default(), ctx)
+            }
+        },
+    );
 }
 
 pub fn inlay_hints_response(meta: EditorMeta, inlay_hints: Vec<InlayHint>, ctx: &mut Context) {
@@ -43,6 +49,7 @@ pub fn inlay_hints_response(meta: EditorMeta, inlay_hints: Vec<InlayHint>, ctx: 
         Some(document) => document,
         None => return,
     };
+    let (_, server) = ctx.language_servers.first_key_value().unwrap();
     let ranges = inlay_hints
         .into_iter()
         .map(
@@ -54,7 +61,7 @@ pub fn inlay_hints_response(meta: EditorMeta, inlay_hints: Vec<InlayHint>, ctx: 
                  ..
              }| {
                 let position =
-                    lsp_position_to_kakoune(&position, &document.text, ctx.offset_encoding);
+                    lsp_position_to_kakoune(&position, &document.text, server.offset_encoding);
                 let label = match label {
                     InlayHintLabel::String(s) => s,
                     InlayHintLabel::LabelParts(parts) => {

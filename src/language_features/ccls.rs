@@ -12,7 +12,7 @@ use url::Url;
 
 // Navigate
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct NavigateParams {
     pub text_document: TextDocumentIdentifier,
@@ -45,9 +45,11 @@ pub fn navigate(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
     };
     ctx.call::<NavigateRequest, _>(
         meta,
-        req_params,
-        move |ctx: &mut Context, meta, response| {
-            goto::goto(meta, response, ctx);
+        RequestParams::All(vec![req_params]),
+        move |ctx: &mut Context, meta, mut response| {
+            if let Some((_, response)) = response.pop() {
+                goto::goto(meta, response, ctx);
+            }
         },
     );
 }
@@ -57,7 +59,7 @@ pub fn navigate(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
 
 // $ccls/vars
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct VarsParams {
     pub text_document: TextDocumentIdentifier,
@@ -80,14 +82,20 @@ pub fn vars(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
         },
         position: get_lsp_position(&meta.buffile, &params.position, ctx).unwrap(),
     };
-    ctx.call::<VarsRequest, _>(meta, req_params, move |ctx: &mut Context, meta, result| {
-        goto::goto(meta, result.map(GotoDefinitionResponse::Array), ctx);
-    });
+    ctx.call::<VarsRequest, _>(
+        meta,
+        RequestParams::All(vec![req_params]),
+        move |ctx: &mut Context, meta, mut result| {
+            if let Some((_, result)) = result.pop() {
+                goto::goto(meta, result.map(GotoDefinitionResponse::Array), ctx);
+            }
+        },
+    );
 }
 
 // $ccls/inheritance
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct InheritanceParams {
     pub text_document: TextDocumentIdentifier,
@@ -121,14 +129,20 @@ pub fn inheritance(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
         levels: params.levels,
         derived: params.derived,
     };
-    ctx.call::<InheritanceRequest, _>(meta, req_params, move |ctx: &mut Context, meta, result| {
-        goto::goto(meta, result.map(GotoDefinitionResponse::Array), ctx);
-    });
+    ctx.call::<InheritanceRequest, _>(
+        meta,
+        RequestParams::All(vec![req_params]),
+        move |ctx: &mut Context, meta, mut result| {
+            if let Some((_, result)) = result.pop() {
+                goto::goto(meta, result.map(GotoDefinitionResponse::Array), ctx);
+            }
+        },
+    );
 }
 
 // $ccls/call
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct CallParams {
     pub text_document: TextDocumentIdentifier,
@@ -159,14 +173,20 @@ pub fn call(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
         position: get_lsp_position(&meta.buffile, &params.position, ctx).unwrap(),
         callee: params.callee,
     };
-    ctx.call::<CallRequest, _>(meta, req_params, move |ctx: &mut Context, meta, result| {
-        goto::goto(meta, result.map(GotoDefinitionResponse::Array), ctx);
-    });
+    ctx.call::<CallRequest, _>(
+        meta,
+        RequestParams::All(vec![req_params]),
+        move |ctx: &mut Context, meta, mut result| {
+            if let Some((_, result)) = result.pop() {
+                goto::goto(meta, result.map(GotoDefinitionResponse::Array), ctx);
+            }
+        },
+    );
 }
 
 // $ccls/member
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct MemberParams {
     pub text_document: TextDocumentIdentifier,
@@ -197,9 +217,15 @@ pub fn member(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
         position: get_lsp_position(&meta.buffile, &params.position, ctx).unwrap(),
         kind: params.kind,
     };
-    ctx.call::<MemberRequest, _>(meta, req_params, move |ctx: &mut Context, meta, result| {
-        goto::goto(meta, result.map(GotoDefinitionResponse::Array), ctx)
-    });
+    ctx.call::<MemberRequest, _>(
+        meta,
+        RequestParams::All(vec![req_params]),
+        move |ctx: &mut Context, meta, mut result| {
+            if let Some((_, result)) = result.pop() {
+                goto::goto(meta, result.map(GotoDefinitionResponse::Array), ctx)
+            }
+        },
+    );
 }
 
 // Semantic Highlighting
@@ -364,12 +390,13 @@ pub fn publish_semantic_highlighting(params: Params, ctx: &mut Context) {
         Some(meta) => meta,
         None => return,
     };
+    let (_, server) = ctx.language_servers.first_key_value().unwrap();
     let ranges = params
         .symbols
         .iter()
         .flat_map(|x| {
             let face = x.get_face();
-            let offset_encoding = ctx.offset_encoding;
+            let offset_encoding = server.offset_encoding;
             x.ls_ranges.iter().filter_map(move |r| {
                 if face.is_empty() {
                     warn!("No face found for {:?}", x);

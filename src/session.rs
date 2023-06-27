@@ -109,7 +109,6 @@ pub fn start(config: &Config, initial_request: Option<String>) -> i32 {
                         let route = Route {
                             session: request.meta.session.clone(),
                             server_name: server_name.clone(),
-                            language: server_name.clone(),
                             root,
                         };
 
@@ -270,7 +269,7 @@ fn spawn_controller(
     let channel_capacity = 1024;
 
     let worker = Worker::spawn("Controller", channel_capacity, move |receiver, _| {
-        controller::start(to_editor, receiver, &routes[0], request, config);
+        controller::start(to_editor, receiver, &language_id, &routes, request, config);
     });
 
     ControllerHandle { worker }

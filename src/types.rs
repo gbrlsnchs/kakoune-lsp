@@ -175,7 +175,6 @@ pub type RootPath = String;
 pub struct Route {
     pub session: SessionId,
     pub server_name: ServerName,
-    pub language: LanguageId,
     pub root: RootPath,
 }
 
@@ -380,6 +379,12 @@ pub enum OffsetEncoding {
     /// UTF-16 code units
     #[serde(rename = "utf-16")]
     Utf16,
+}
+
+impl Default for OffsetEncoding {
+    fn default() -> Self {
+        Self::Utf16
+    }
 }
 
 // An intermediate representation of the diagnostics on a line, for use with inlay diagnostics

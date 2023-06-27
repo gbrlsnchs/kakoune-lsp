@@ -18,14 +18,16 @@ pub fn switch_source_header(meta: EditorMeta, ctx: &mut Context) {
     };
     ctx.call::<SwitchSourceHeaderRequest, _>(
         meta,
-        req_params,
-        move |ctx: &mut Context, meta, response| {
-            if let Some(response) = response {
-                let command = format!(
-                    "evaluate-commands -try-client %opt{{jumpclient}} -verbatim -- edit -existing {}",
-                    editor_quote(response.to_file_path().unwrap().to_str().unwrap()),
-                );
-                ctx.exec(meta, command);
+        RequestParams::All(vec![req_params]),
+        move |ctx: &mut Context, meta, mut response| {
+        	if let Some((_, response))=response.pop() {
+                if let Some(response) = response {
+                    let command = format!(
+                        "evaluate-commands -try-client %opt{{jumpclient}} -verbatim -- edit -existing {}",
+                        editor_quote(response.to_file_path().unwrap().to_str().unwrap()),
+                    );
+                    ctx.exec(meta, command);
+                }
             }
         },
     );

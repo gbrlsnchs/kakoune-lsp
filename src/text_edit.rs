@@ -80,6 +80,7 @@ pub fn apply_annotated_text_edits<T: TextEditish<T>>(
 ) {
     let path = uri.to_file_path().ok().unwrap();
     let buffile = path.to_str().unwrap();
+    let (_, server) = ctx.language_servers.first_key_value().unwrap();
     if let Some(document) = ctx.documents.get(buffile) {
         let meta = meta.clone();
         // Write hidden buffers unless they were already dirty.
@@ -92,7 +93,7 @@ pub fn apply_annotated_text_edits<T: TextEditish<T>>(
             Some(uri),
             edits,
             &document.text,
-            ctx.offset_encoding,
+            server.offset_encoding,
             write_to_disk,
         ) {
             Some(cmd) => ctx.exec(meta, cmd),
@@ -202,7 +203,8 @@ pub fn apply_text_edits_to_file<T: TextEditish<T>>(
         Ok(output)
     }
 
-    match apply_text_edits_to_file_impl(text, temp_file, text_edits, ctx.offset_encoding) {
+    let (server_name, server) = ctx.language_servers.first_key_value().unwrap();
+    match apply_text_edits_to_file_impl(text, temp_file, text_edits, server.offset_encoding) {
         Ok(updated_text) => {
             std::fs::rename(&temp_path, filename)?;
             unsafe {
@@ -216,7 +218,7 @@ pub fn apply_text_edits_to_file<T: TextEditish<T>>(
                     text: String::from_utf8_lossy(&updated_text).to_string(),
                 },
             };
-            ctx.notify::<DidOpenTextDocument>(params);
+            ctx.notify::<DidOpenTextDocument>(&server_name.clone(), params);
             Ok(())
         }
         Err(e) => {

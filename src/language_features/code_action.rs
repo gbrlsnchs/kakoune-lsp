@@ -33,10 +33,11 @@ pub fn text_document_code_action(meta: EditorMeta, params: EditorParams, ctx: &m
             return;
         }
     };
+    let (_, server) = ctx.language_servers.first_key_value().unwrap();
     let range = kakoune_range_to_lsp(
         &parse_kakoune_range(&params.selection_desc).0,
         &document.text,
-        ctx.offset_encoding,
+        server.offset_encoding,
     );
     code_actions_for_range(meta, params, ctx, range)
 }
@@ -52,7 +53,8 @@ fn code_actions_for_range(
     let diagnostics: Vec<Diagnostic> = if let Some(buff_diags) = buff_diags {
         buff_diags
             .iter()
-            .filter(|d| ranges_overlap(d.range, range))
+            .filter(|(_, d)| ranges_overlap(d.range, range))
+            .map(|(_, d)| d)
             .cloned()
             .collect()
     } else {
@@ -76,9 +78,15 @@ fn code_actions_for_range(
         work_done_progress_params: Default::default(),
         partial_result_params: Default::default(),
     };
-    ctx.call::<CodeActionRequest, _>(meta, req_params, move |ctx: &mut Context, meta, result| {
-        editor_code_actions(meta, result, ctx, params, range)
-    });
+    ctx.call::<CodeActionRequest, _>(
+        meta,
+        RequestParams::All(vec![req_params]),
+        move |ctx: &mut Context, meta, mut result| {
+            if let Some((_, result)) = result.pop() {
+                editor_code_actions(meta, result, ctx, params, range)
+            }
+        },
+    );
 }
 
 fn editor_code_actions(
@@ -270,10 +278,12 @@ pub fn text_document_code_action_resolve(
 
     ctx.call::<CodeActionResolveRequest, _>(
         meta,
-        serde_json::from_str(&params.code_action).unwrap(),
-        move |ctx: &mut Context, meta, result| {
-            let cmd = code_action_to_editor_command(&result, false, false);
-            ctx.exec(meta, cmd)
+        RequestParams::All(vec![serde_json::from_str(&params.code_action).unwrap()]),
+        move |ctx: &mut Context, meta, mut result| {
+            if let Some((_, result)) = result.pop() {
+                let cmd = code_action_to_editor_command(&result, false, false);
+                ctx.exec(meta, cmd)
+            }
         },
     );
 }

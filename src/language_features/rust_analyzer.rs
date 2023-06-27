@@ -1,4 +1,4 @@
-use crate::context::Context;
+use crate::context::{Context, RequestParams};
 use crate::position::{get_lsp_position, lsp_position_to_kakoune};
 use crate::text_edit::apply_text_edits;
 use crate::types::{EditorMeta, EditorParams, KakounePosition, PositionParams};
@@ -106,9 +106,10 @@ pub fn apply_source_change(meta: EditorMeta, params: ExecuteCommandParams, ctx: 
     {
         let buffile = uri.to_file_path().unwrap();
         let buffile = buffile.to_str().unwrap();
+        let (_, server) = ctx.language_servers.first_key_value().unwrap();
         let position = match ctx.documents.get(buffile) {
             Some(document) => {
-                lsp_position_to_kakoune(position, &document.text, ctx.offset_encoding)
+                lsp_position_to_kakoune(position, &document.text, server.offset_encoding)
             }
             _ => KakounePosition {
                 line: position.line + 1,
@@ -130,7 +131,7 @@ pub fn apply_source_change(meta: EditorMeta, params: ExecuteCommandParams, ctx: 
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ExpandMacroParams {
     pub text_document: TextDocumentIdentifier,
@@ -159,9 +160,15 @@ pub fn expand_macro(meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
         },
         position: get_lsp_position(&meta.buffile, &params.position, ctx).unwrap(),
     };
-    ctx.call::<ExpandMacroRequest, _>(meta, req_params, move |ctx: &mut Context, meta, result| {
-        editor_expand_macro(meta, result, ctx);
-    });
+    ctx.call::<ExpandMacroRequest, _>(
+        meta,
+        RequestParams::All(vec![req_params]),
+        move |ctx: &mut Context, meta, mut result| {
+            if let Some((_, result)) = result.pop() {
+                editor_expand_macro(meta, result, ctx);
+            }
+        },
+    );
 }
 
 fn editor_expand_macro(meta: EditorMeta, result: ExpandMacroResponse, ctx: &mut Context) {

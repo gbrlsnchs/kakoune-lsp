@@ -21,9 +21,11 @@ pub fn call_hierarchy_prepare(meta: EditorMeta, params: EditorParams, ctx: &mut 
 
     ctx.call::<CallHierarchyPrepare, _>(
         meta,
-        prepare_params,
-        move |ctx: &mut Context, meta, result| {
-            request_call_hierarchy(meta, ctx, params.incoming_or_outgoing, result);
+        RequestParams::All(vec![prepare_params]),
+        move |ctx: &mut Context, meta, mut result| {
+            if let Some((_, result)) = result.pop() {
+                request_call_hierarchy(meta, ctx, params.incoming_or_outgoing, result);
+            }
         },
     )
 }
@@ -49,9 +51,11 @@ fn request_call_hierarchy(
 
         ctx.call::<CallHierarchyIncomingCalls, _>(
             meta,
-            params,
-            move |ctx: &mut Context, meta, result| {
-                format_call_hierarchy_calls(meta, ctx, incoming_or_outgoing, &item, &result);
+            RequestParams::All(vec![params]),
+            move |ctx: &mut Context, meta, mut result| {
+                if let Some((_, result)) = result.pop() {
+                    format_call_hierarchy_calls(meta, ctx, incoming_or_outgoing, &item, &result);
+                }
             },
         );
     } else {
@@ -63,9 +67,11 @@ fn request_call_hierarchy(
 
         ctx.call::<CallHierarchyOutgoingCalls, _>(
             meta,
-            params,
-            move |ctx: &mut Context, meta, result| {
-                format_call_hierarchy_calls(meta, ctx, incoming_or_outgoing, &item, &result);
+            RequestParams::All(vec![params]),
+            move |ctx: &mut Context, meta, mut result| {
+                if let Some((_, result)) = result.pop() {
+                    format_call_hierarchy_calls(meta, ctx, incoming_or_outgoing, &item, &result);
+                }
             },
         );
     }
@@ -79,8 +85,9 @@ fn format_location(
     prefix: &str,
     suffix: &str,
 ) -> String {
+    let (_, server) = ctx.language_servers.first_key_value().unwrap();
     let filename = uri.to_file_path().unwrap();
-    let filename = short_file_path(filename.to_str().unwrap(), &ctx.root_path);
+    let filename = short_file_path(filename.to_str().unwrap(), &server.root_path);
     let position = get_kakoune_position_with_fallback(&meta.buffile, position, ctx);
     format!(
         "{}{}:{}:{}: {}\n",
@@ -183,10 +190,11 @@ fn format_call_hierarchy_calls<'a>(
     } else {
         "lsp-show-outgoing-calls"
     };
+    let (_, server) = ctx.language_servers.first_key_value().unwrap();
     let command = format!(
         "{} {} {}",
         command,
-        editor_quote(&ctx.root_path),
+        editor_quote(&server.root_path),
         editor_quote(&contents),
     );
     ctx.exec(meta, command);

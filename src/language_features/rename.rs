@@ -21,9 +21,15 @@ pub fn text_document_rename(meta: EditorMeta, params: EditorParams, ctx: &mut Co
         new_name: params.new_name,
         work_done_progress_params: Default::default(),
     };
-    ctx.call::<Rename, _>(meta, req_params, move |ctx: &mut Context, meta, result| {
-        editor_rename(meta, result, ctx)
-    });
+    ctx.call::<Rename, _>(
+        meta,
+        RequestParams::All(vec![req_params]),
+        move |ctx: &mut Context, meta, mut result| {
+            if let Some((_, result)) = result.pop() {
+                editor_rename(meta, result, ctx)
+            }
+        },
+    );
 }
 
 // TODO handle version, so change is not applied if buffer is modified (and need to show a warning)

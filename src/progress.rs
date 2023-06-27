@@ -16,7 +16,8 @@ use std::time::{self, Duration};
 
 pub fn work_done_progress_cancel(_meta: EditorMeta, params: EditorParams, ctx: &mut Context) {
     let params = WorkDoneProgressCancelParams::deserialize(params).expect("Failed to parse params");
-    ctx.notify::<WorkDoneProgressCancel>(params);
+    let (server_name, _) = ctx.language_servers.first_key_value().unwrap();
+    ctx.notify::<WorkDoneProgressCancel>(&server_name.clone(), params);
 }
 
 pub fn work_done_progress_create(

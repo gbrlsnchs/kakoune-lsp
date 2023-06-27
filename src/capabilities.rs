@@ -325,17 +325,25 @@ pub fn initialize(root_path: &str, meta: EditorMeta, ctx: &mut Context) {
                     allowed_tags: None,
                 }),
                 stale_request_support: None,
-                position_encodings: Some(match ctx.preferred_offset_encoding {
-                    None | Some(OffsetEncoding::Utf8) => {
-                        vec![PositionEncodingKind::UTF8, PositionEncodingKind::UTF16]
-                    }
-                    Some(OffsetEncoding::Utf16) => {
-                        vec![PositionEncodingKind::UTF16, PositionEncodingKind::UTF8]
-                    }
-                }),
+                position_encodings: Some(
+                    match {
+                        let (_, server) = ctx.language_servers.first_key_value().unwrap();
+                        server.preferred_offset_encoding
+                    } {
+                        None | Some(OffsetEncoding::Utf8) => {
+                            vec![PositionEncodingKind::UTF8, PositionEncodingKind::UTF16]
+                        }
+                        Some(OffsetEncoding::Utf16) => {
+                            vec![PositionEncodingKind::UTF16, PositionEncodingKind::UTF8]
+                        }
+                    },
+                ),
             }),
             offset_encoding: Some(
-                match ctx.preferred_offset_encoding {
+                match {
+                    let (_, server) = ctx.language_servers.first_key_value().unwrap();
+                    server.preferred_offset_encoding
+                } {
                     None | Some(OffsetEncoding::Utf8) => ["utf-8", "utf-16"],
                     Some(OffsetEncoding::Utf16) => ["utf-16", "utf-8"],
                 }
@@ -361,32 +369,38 @@ pub fn initialize(root_path: &str, meta: EditorMeta, ctx: &mut Context) {
         locale: None,
     };
 
-    ctx.call::<Initialize, _>(meta, params, move |ctx: &mut Context, _meta, result| {
-        ctx.offset_encoding = result
-            .capabilities
-            .position_encoding
-            .as_ref()
-            .map(|enc| enc.as_str())
-            .or(result.offset_encoding.as_deref())
-            .map(|encoding| match encoding {
-                "utf-8" => OffsetEncoding::Utf8,
-                "utf-16" => OffsetEncoding::Utf16,
-                encoding => {
-                    error!("Language server sent unsupported offset encoding: {encoding}");
-                    OffsetEncoding::Utf16
-                }
-            })
-            .unwrap_or(OffsetEncoding::Utf16);
-        if matches!(
-            (ctx.preferred_offset_encoding, ctx.offset_encoding),
-            (Some(OffsetEncoding::Utf8), OffsetEncoding::Utf16)) {
-                warn!(
-                    "Requested offset encoding utf-8 is not supported by server, falling back to utf-16"
-                );
+    ctx.call::<Initialize, _>(meta, RequestParams::All(vec![params]), move |ctx: &mut Context, _meta, mut result| {
+    	if let Some((_, result)) = result.pop() {
+        	let mut entry = ctx.language_servers.first_entry().unwrap();
+        	let server_name = entry.key().clone();
+        	let server = entry.get_mut();
+            server.offset_encoding = result
+                .capabilities
+                .position_encoding
+                .as_ref()
+                .map(|enc| enc.as_str())
+                .or(result.offset_encoding.as_deref())
+                .map(|encoding| match encoding {
+                    "utf-8" => OffsetEncoding::Utf8,
+                    "utf-16" => OffsetEncoding::Utf16,
+                    encoding => {
+                        error!("Language server sent unsupported offset encoding: {encoding}");
+                        OffsetEncoding::Utf16
+                    }
+                })
+                .unwrap_or(OffsetEncoding::Utf16);
+            if matches!(
+                (server.preferred_offset_encoding, server.offset_encoding),
+                (Some(OffsetEncoding::Utf8), OffsetEncoding::Utf16)) {
+                    warn!(
+                        "Requested offset encoding utf-8 is not supported by server, falling back to utf-16"
+                    );
+            }
+            server.capabilities = Some(result.capabilities);
+            let server_name = server_name.clone();
+            ctx.notify::<Initialized>(&server_name, InitializedParams {});
+            controller::dispatch_pending_editor_requests(ctx)
         }
-        ctx.capabilities = Some(result.capabilities);
-        ctx.notify::<Initialized>(InitializedParams {});
-        controller::dispatch_pending_editor_requests(ctx)
     });
 }
 
@@ -428,7 +442,8 @@ pub fn attempt_server_capability(ctx: &Context, meta: &EditorMeta, feature: &'st
 }
 
 pub fn server_has_capability(ctx: &Context, feature: &'static str) -> bool {
-    let server_capabilities = match ctx.capabilities.as_ref() {
+    let (_, server) = ctx.language_servers.first_key_value().unwrap();
+    let server_capabilities = match server.capabilities.as_ref() {
         Some(caps) => caps,
         None => return false,
     };
@@ -560,7 +575,10 @@ pub fn capabilities(meta: EditorMeta, ctx: &mut Context) {
 
     // NOTE controller should park request for capabilities until they are available thus it should
     // be safe to unwrap here (otherwise something unexpectedly wrong and it's better to panic)
-    let server_capabilities = ctx.capabilities.as_ref().unwrap();
+    let server_capabilities = {
+        let (_, server) = ctx.language_servers.first_key_value().unwrap();
+        server.capabilities.as_ref().unwrap()
+    };
 
     if let Some(ref provider) = server_capabilities.execute_command_provider {
         features.push(format!(

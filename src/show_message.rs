@@ -37,7 +37,8 @@ pub fn show_message_request_respond(params: toml::Value, ctx: &mut Context) {
         .and_then(|v| MessageActionItem::deserialize(v).ok())
         .map(|v| jsonrpc_core::to_value(v).expect("Cannot serialize item"))
         .unwrap_or(jsonrpc_core::Value::Null);
-    ctx.reply(resp.message_request_id, Ok(item));
+    let (server_name, _) = ctx.language_servers.first_key_value().unwrap();
+    ctx.reply(&server_name.clone(), resp.message_request_id, Ok(item));
 }
 
 pub fn show_message_request_next(meta: EditorMeta, ctx: &mut Context) {
@@ -53,7 +54,8 @@ pub fn show_message_request_next(meta: EditorMeta, ctx: &mut Context) {
         _ => {
             // a ShowMessageRequest with no actions is just a ShowMessage notification.
             show_message(meta, params.typ, &params.message, ctx);
-            ctx.reply(id, Ok(serde_json::Value::Null));
+            let (server_name, _) = ctx.language_servers.first_key_value().unwrap();
+            ctx.reply(&server_name.clone(), id, Ok(serde_json::Value::Null));
             return;
         }
     };

@@ -76,9 +76,10 @@ pub fn get_lsp_position(
     position: &KakounePosition,
     ctx: &Context,
 ) -> Option<Position> {
+    let (_, server) = ctx.language_servers.first_key_value().unwrap();
     ctx.documents
         .get(filename)
-        .map(|document| kakoune_position_to_lsp(position, &document.text, ctx.offset_encoding))
+        .map(|document| kakoune_position_to_lsp(position, &document.text, server.offset_encoding))
 }
 
 /// Wrapper for lsp_position_to_kakoune which uses context to get buffer content and offset encoding.
@@ -88,8 +89,9 @@ pub fn get_kakoune_position(
     position: &Position,
     ctx: &Context,
 ) -> Option<KakounePosition> {
+    let (_, server) = ctx.language_servers.first_key_value().unwrap();
     get_file_contents(filename, ctx)
-        .map(|text| lsp_position_to_kakoune(position, &text, ctx.offset_encoding))
+        .map(|text| lsp_position_to_kakoune(position, &text, server.offset_encoding))
 }
 
 /// Like get_kakoune_position but default to an approximate position if something goes wrong.
@@ -107,8 +109,9 @@ pub fn get_kakoune_position_with_fallback(
 /// Wrapper for lsp_range_to_kakoune which uses context to get buffer content and offset encoding.
 /// Reads the file directly if it is not present in context (is not open in editor).
 pub fn get_kakoune_range(filename: &str, range: &Range, ctx: &Context) -> Option<KakouneRange> {
+    let (_, server) = ctx.language_servers.first_key_value().unwrap();
     get_file_contents(filename, ctx)
-        .map(|text| lsp_range_to_kakoune(range, &text, ctx.offset_encoding))
+        .map(|text| lsp_range_to_kakoune(range, &text, server.offset_encoding))
 }
 
 /// Like get_kakoune_range but default to an approximate range if something goes wrong.

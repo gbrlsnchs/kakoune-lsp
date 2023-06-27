@@ -164,6 +164,7 @@ pub fn publish_semantic_highlighting(params: Params, ctx: &mut Context) {
     if document.is_none() {
         return;
     }
+    let (_, server) = ctx.language_servers.first_key_value().unwrap();
     let document = document.unwrap();
     let version = document.version;
     let ranges = params
@@ -171,7 +172,7 @@ pub fn publish_semantic_highlighting(params: Params, ctx: &mut Context) {
         .iter()
         .flat_map(|x| {
             let face = x.get_face();
-            let offset_encoding = ctx.offset_encoding;
+            let offset_encoding = server.offset_encoding;
             x.ranges.iter().filter_map(move |r| {
                 if face.is_empty() {
                     warn!("No face found for {:?}", x);

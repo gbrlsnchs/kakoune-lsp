@@ -38,9 +38,15 @@ pub fn text_document_hover(meta: EditorMeta, params: EditorParams, ctx: &mut Con
         },
         work_done_progress_params: Default::default(),
     };
-    ctx.call::<HoverRequest, _>(meta, req_params, move |ctx: &mut Context, meta, result| {
-        editor_hover(meta, hover_type, cursor, range, params.tabstop, result, ctx)
-    });
+    ctx.call::<HoverRequest, _>(
+        meta,
+        RequestParams::All(vec![req_params]),
+        move |ctx: &mut Context, meta, mut result| {
+            if let Some((_, result)) = result.pop() {
+                editor_hover(meta, hover_type, cursor, range, params.tabstop, result, ctx)
+            }
+        },
+    );
 }
 
 pub fn editor_hover(
@@ -53,15 +59,16 @@ pub fn editor_hover(
     ctx: &mut Context,
 ) {
     let doc = &ctx.documents[&meta.buffile];
-    let lsp_range = kakoune_range_to_lsp(&range, &doc.text, ctx.offset_encoding);
+    let (_, server) = ctx.language_servers.first_key_value().unwrap();
+    let lsp_range = kakoune_range_to_lsp(&range, &doc.text, server.offset_encoding);
     let for_hover_buffer = matches!(hover_type, HoverType::HoverBuffer { .. });
     let diagnostics = ctx.diagnostics.get(&meta.buffile);
     let diagnostics = diagnostics
         .map(|x| {
             x.iter()
-                .filter(|x| ranges_touch_same_line(x.range, lsp_range))
-                .filter(|x| !x.message.is_empty())
-                .map(|x| {
+                .filter(|(_, x)| ranges_touch_same_line(x.range, lsp_range))
+                .filter(|(_, x)| !x.message.is_empty())
+                .map(|(_, x)| {
                     // Indent line breaks to the same level as the bullet point
                     let message = (x.message.trim().to_string()
                         + &format_related_information(x, ctx)
@@ -104,8 +111,8 @@ pub fn editor_hover(
         .map(|lenses| {
             lenses
                 .iter()
-                .filter(|lens| ranges_touch_same_line(lens.range, lsp_range))
-                .map(|lens| {
+                .filter(|(_, lens)| ranges_touch_same_line(lens.range, lsp_range))
+                .map(|(_, lens)| {
                     lens.command
                         .as_ref()
                         .map(|cmd| cmd.title.as_str())

@@ -1,5 +1,5 @@
 use crate::capabilities::{attempt_server_capability, CAPABILITY_SEMANTIC_TOKENS};
-use crate::context::Context;
+use crate::context::{Context, RequestParams};
 use crate::position::lsp_range_to_kakoune;
 use crate::types::EditorMeta;
 use crate::util::editor_quote;
@@ -24,15 +24,27 @@ pub fn tokens_request(meta: EditorMeta, ctx: &mut Context) {
         },
         work_done_progress_params: Default::default(),
     };
-    ctx.call::<SemanticTokensFullRequest, _>(meta, req_params, move |ctx, meta, response| {
-        if let Some(response) = response {
-            tokens_response(meta, response, ctx);
-        }
-    });
+    ctx.call::<SemanticTokensFullRequest, _>(
+        meta,
+        RequestParams::All(vec![req_params]),
+        move |ctx, meta, mut response| {
+            if let Some((_, response)) = response.pop() {
+                if let Some(response) = response {
+                    tokens_response(meta, response, ctx);
+                }
+            }
+        },
+    );
 }
 
 pub fn tokens_response(meta: EditorMeta, tokens: SemanticTokensResult, ctx: &mut Context) {
-    let legend = match ctx.capabilities.as_ref().unwrap().semantic_tokens_provider {
+    let (_, server) = ctx.language_servers.first_key_value().unwrap();
+    let legend = match server
+        .capabilities
+        .as_ref()
+        .unwrap()
+        .semantic_tokens_provider
+    {
         Some(SemanticTokensOptions(SemanticTokensOptions { ref legend, .. }))
         | Some(SemanticTokensRegistrationOptions(SemanticTokensRegistrationOptions {
             semantic_tokens_options: SemanticTokensOptions { ref legend, .. },
@@ -78,7 +90,7 @@ pub fn tokens_response(meta: EditorMeta, tokens: SemanticTokensResult, ctx: &mut
                     start: Position::new(line, start),
                     end: Position::new(line, start + length),
                 };
-                let range = lsp_range_to_kakoune(&range, &document.text, ctx.offset_encoding);
+                let range = lsp_range_to_kakoune(&range, &document.text, server.offset_encoding);
                 // See the spec for information on the integer encoding:
                 // https://microsoft.github.io/language-server-protocol/specifications/specification-current/#textDocument_semanticTokens
                 let token_name = legend.token_types[token_type as usize].as_str();

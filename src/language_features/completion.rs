@@ -28,9 +28,15 @@ pub fn text_document_completion(meta: EditorMeta, params: EditorParams, ctx: &mu
         work_done_progress_params: Default::default(),
         partial_result_params: Default::default(),
     };
-    ctx.call::<Completion, _>(meta, req_params, |ctx: &mut Context, meta, result| {
-        editor_completion(meta, params, result, ctx)
-    });
+    ctx.call::<Completion, _>(
+        meta,
+        RequestParams::All(vec![req_params]),
+        |ctx: &mut Context, meta, mut result| {
+            if let Some((_, result)) = result.pop() {
+                editor_completion(meta, params, result, ctx)
+            }
+        },
+    );
 }
 
 fn editor_completion(
@@ -46,7 +52,11 @@ fn editor_completion(
     };
 
     let version = meta.version;
-    ctx.completion_items = items;
+    let (server_name, server) = ctx.language_servers.first_key_value().unwrap();
+    ctx.completion_items = items
+        .into_iter()
+        .map(|v| (server_name.clone(), v))
+        .collect();
     ctx.completion_items_timestamp = version;
     let items = &ctx.completion_items;
     if ctx.completion_last_client != meta.client {
@@ -60,7 +70,7 @@ fn editor_completion(
     // Maximum display width of any completion label.
     let maxwidth = items
         .iter()
-        .map(|x| UnicodeWidthStr::width(x.label.as_str()))
+        .map(|(_, x)| UnicodeWidthStr::width(x.label.as_str()))
         .max()
         .unwrap_or(0);
 
@@ -70,8 +80,8 @@ fn editor_completion(
     let items = items
         .iter()
         .enumerate()
-        .map(|(completion_item_index, x)| {
-            let maybe_resolve = if ctx
+        .map(|(completion_item_index, (_, x))| {
+            let maybe_resolve = if server
                 .capabilities
                 .as_ref()
                 .and_then(|caps| caps.completion_provider.as_ref())
@@ -116,7 +126,7 @@ fn editor_completion(
                         let range = lsp_range_to_kakoune(
                             &text_edit.range,
                             &document.text,
-                            ctx.offset_encoding,
+                            server.offset_encoding,
                         );
 
                         if can_infer_offset {
@@ -300,7 +310,7 @@ pub fn completion_item_resolve(meta: EditorMeta, params: EditorParams, ctx: &mut
     }
 
     let (item, detail, documentation) = if pager_active {
-        let item = &ctx.completion_items[completion_item_index as usize];
+        let (_, item) = &ctx.completion_items[completion_item_index as usize];
         // Stop if there is nothing interesting to resolve.
         if item.detail.is_some() && item.documentation.is_some() {
             return;
@@ -312,7 +322,7 @@ pub fn completion_item_resolve(meta: EditorMeta, params: EditorParams, ctx: &mut
         )
     } else {
         // Since we're the only user of the completion items, we can clear them.
-        let item = ctx
+        let (_, item) = ctx
             .completion_items
             .drain(..)
             .nth(completion_item_index as usize)
@@ -331,9 +341,22 @@ pub fn completion_item_resolve(meta: EditorMeta, params: EditorParams, ctx: &mut
         (item, None, None)
     };
 
-    ctx.call::<ResolveCompletionItem, _>(meta, item, move |tx: &mut Context, meta, new_item| {
-        editor_completion_item_resolve(tx, meta, pager_active, detail, documentation, new_item)
-    });
+    ctx.call::<ResolveCompletionItem, _>(
+        meta,
+        RequestParams::All(vec![item]),
+        move |tx: &mut Context, meta, mut new_item| {
+            if let Some((_, new_item)) = new_item.pop() {
+                editor_completion_item_resolve(
+                    tx,
+                    meta,
+                    pager_active,
+                    detail,
+                    documentation,
+                    new_item,
+                )
+            }
+        },
+    );
 }
 
 fn editor_completion_item_resolve(

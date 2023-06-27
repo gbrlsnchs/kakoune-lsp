@@ -30,9 +30,15 @@ pub fn text_document_code_lens(meta: EditorMeta, ctx: &mut Context) {
         work_done_progress_params: WorkDoneProgressParams::default(),
         partial_result_params: PartialResultParams::default(),
     };
-    ctx.call::<CodeLensRequest, _>(meta, req_params, |ctx: &mut Context, meta, result| {
-        editor_code_lens(meta, result, ctx)
-    });
+    ctx.call::<CodeLensRequest, _>(
+        meta,
+        RequestParams::All(vec![req_params]),
+        |ctx: &mut Context, meta, mut result| {
+            if let Some((_, result)) = result.pop() {
+                editor_code_lens(meta, result, ctx)
+            }
+        },
+    );
 }
 
 fn editor_code_lens(meta: EditorMeta, result: Option<Vec<CodeLens>>, ctx: &mut Context) {
@@ -48,12 +54,13 @@ fn editor_code_lens(meta: EditorMeta, result: Option<Vec<CodeLens>>, ctx: &mut C
         }
     };
     let version = document.version;
+    let (server_name, server) = ctx.language_servers.first_key_value().unwrap();
     let range_specs = lenses
         .iter()
         .map(|lens| {
             let label = lens.command.as_ref().map_or("", |v| &v.title);
             let position =
-                lsp_position_to_kakoune(&lens.range.start, &document.text, ctx.offset_encoding);
+                lsp_position_to_kakoune(&lens.range.start, &document.text, server.offset_encoding);
             let line = position.line;
             let column = position.column;
             lazy_static! {
@@ -69,7 +76,13 @@ fn editor_code_lens(meta: EditorMeta, result: Option<Vec<CodeLens>>, ctx: &mut C
         })
         .join(" ");
 
-    ctx.code_lenses.insert(meta.buffile.clone(), lenses);
+    ctx.code_lenses.insert(
+        meta.buffile.clone(),
+        lenses
+            .into_iter()
+            .map(|v| (server_name.clone(), v))
+            .collect(),
+    );
 
     let line_flags = gather_line_flags(ctx, buffile).0;
     let command = formatdoc!(
@@ -99,22 +112,29 @@ pub fn resolve_and_perform_code_lens(meta: EditorMeta, params: EditorParams, ctx
         Some(document) => document,
         None => return,
     };
-    let range = kakoune_range_to_lsp(&range, &document.text, ctx.offset_encoding);
+    let (_, server) = ctx.language_servers.first_key_value().unwrap();
+    let range = kakoune_range_to_lsp(&range, &document.text, server.offset_encoding);
 
-    if let Some(lens) = ctx
+    if let Some((_, lens)) = ctx
         .code_lenses
         .get(&meta.buffile)
         .and_then(|lenses| {
             lenses
                 .iter()
-                .find(|lens| ranges_touch_same_line(lens.range, range))
+                .find(|(_, lens)| ranges_touch_same_line(lens.range, range))
         })
-        .filter(|lens| lens.command.is_none())
+        .filter(|(_, lens)| lens.command.is_none())
         .cloned()
     {
-        ctx.call::<CodeLensResolve, _>(meta, lens, |ctx: &mut Context, meta, lens| {
-            perform_code_lens(meta, &[&lens], ctx)
-        });
+        ctx.call::<CodeLensResolve, _>(
+            meta,
+            RequestParams::All(vec![lens]),
+            |ctx: &mut Context, meta, mut lens| {
+                if let Some((_, lens)) = lens.pop() {
+                    perform_code_lens(meta, &[&lens], ctx)
+                }
+            },
+        );
         return;
     }
 
@@ -124,7 +144,8 @@ pub fn resolve_and_perform_code_lens(meta: EditorMeta, params: EditorParams, ctx
     };
     let lenses = lenses
         .iter()
-        .filter(|lens| ranges_touch_same_line(lens.range, range))
+        .filter(|(_, lens)| ranges_touch_same_line(lens.range, range))
+        .map(|(_, lens)| lens)
         .collect::<Vec<_>>();
 
     if lenses.is_empty() {

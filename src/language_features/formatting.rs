@@ -22,10 +22,12 @@ pub fn text_document_formatting(meta: EditorMeta, params: EditorParams, ctx: &mu
     };
     ctx.call::<Formatting, _>(
         meta,
-        req_params,
-        move |ctx: &mut Context, meta: EditorMeta, result: Option<Vec<TextEdit>>| {
-            let text_edits = result.unwrap_or_default();
-            super::range_formatting::editor_range_formatting(meta, text_edits, ctx)
+        RequestParams::All(vec![req_params]),
+        move |ctx, meta, mut result| {
+            if let Some((_, result)) = result.pop() {
+                let text_edits = result.unwrap_or_default();
+                super::range_formatting::editor_range_formatting(meta, text_edits, ctx)
+            }
         },
     );
 }

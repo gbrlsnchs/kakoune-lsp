@@ -30,8 +30,12 @@ pub fn text_document_document_symbol(meta: EditorMeta, ctx: &mut Context) {
     };
     ctx.call::<DocumentSymbolRequest, _>(
         meta,
-        req_params,
-        move |ctx: &mut Context, meta, result| editor_document_symbol(meta, result, ctx),
+        RequestParams::All(vec![req_params]),
+        move |ctx: &mut Context, meta, mut result| {
+            if let Some((_, result)) = result.pop() {
+                editor_document_symbol(meta, result, ctx)
+            }
+        },
     );
 }
 
@@ -45,9 +49,11 @@ pub fn next_or_prev_symbol(meta: EditorMeta, editor_params: EditorParams, ctx: &
     };
     ctx.call::<DocumentSymbolRequest, _>(
         meta,
-        req_params,
-        move |ctx: &mut Context, meta, result| {
-            editor_next_or_prev_symbol(meta, editor_params, result, ctx)
+        RequestParams::All(vec![req_params]),
+        move |ctx: &mut Context, meta, mut result| {
+            if let Some((_, result)) = result.pop() {
+                editor_next_or_prev_symbol(meta, editor_params, result, ctx)
+            }
         },
     );
 }
@@ -148,9 +154,10 @@ fn editor_document_symbol(
             return;
         }
     };
+    let (_, server) = ctx.language_servers.first_key_value().unwrap();
     let command = format!(
         "lsp-show-document-symbol {} {}",
-        editor_quote(&ctx.root_path),
+        editor_quote(&server.root_path),
         editor_quote(&content),
     );
     ctx.exec(meta, command);
@@ -171,6 +178,7 @@ pub fn format_symbol<T: Symbol<T>>(
         ctx: &Context,
         depth: usize,
     ) {
+        let (_, server) = ctx.language_servers.first_key_value().unwrap();
         for symbol in items {
             let mut filename_path = PathBuf::default();
             let filename = symbol_filename(meta, symbol, &mut filename_path);
@@ -180,7 +188,7 @@ pub fn format_symbol<T: Symbol<T>>(
                 format!(
                     "{}{}:{}:{}:",
                     "  ".repeat(depth),
-                    short_file_path(filename, &ctx.root_path),
+                    short_file_path(filename, &server.root_path),
                     position.line,
                     position.column,
                 ),
@@ -311,12 +319,13 @@ fn editor_next_or_prev_for_details(
         }
     };
 
+    let (_, server) = ctx.language_servers.first_key_value().unwrap();
     if !hover {
         let path = Path::new(&filename);
         let filename_abs = if path.is_absolute() {
             filename
         } else {
-            Path::new(&ctx.root_path)
+            Path::new(&server.root_path)
                 .join(filename)
                 .to_str()
                 .unwrap()
@@ -365,23 +374,29 @@ fn editor_next_or_prev_for_details(
         symbol_position.column
     );
 
-    ctx.call::<HoverRequest, _>(meta, req_params, move |ctx: &mut Context, meta, result| {
-        editor_hover(
-            meta,
-            HoverType::Modal {
-                modal_heading,
-                do_after,
-            },
-            symbol_position,
-            KakouneRange {
-                start: symbol_position,
-                end: symbol_position,
-            },
-            0,
-            result,
-            ctx,
-        )
-    });
+    ctx.call::<HoverRequest, _>(
+        meta,
+        RequestParams::All(vec![req_params]),
+        move |ctx: &mut Context, meta, mut result| {
+            if let Some((_, result)) = result.pop() {
+                editor_hover(
+                    meta,
+                    HoverType::Modal {
+                        modal_heading,
+                        do_after,
+                    },
+                    symbol_position,
+                    KakouneRange {
+                        start: symbol_position,
+                        end: symbol_position,
+                    },
+                    0,
+                    result,
+                    ctx,
+                )
+            }
+        },
+    );
 }
 
 /// Gets (filename, kakoune position, name) of the next/previous symbol in the buffer.
@@ -540,8 +555,12 @@ pub fn object(meta: EditorMeta, editor_params: EditorParams, ctx: &mut Context) 
     };
     ctx.call::<DocumentSymbolRequest, _>(
         meta,
-        req_params,
-        move |ctx: &mut Context, meta, result| editor_object(meta, editor_params, result, ctx),
+        RequestParams::All(vec![req_params]),
+        move |ctx: &mut Context, meta, mut result| {
+            if let Some((_, result)) = result.pop() {
+                editor_object(meta, editor_params, result, ctx)
+            }
+        },
     );
 }
 
@@ -609,6 +628,8 @@ fn editor_object(
         }
     });
 
+    let (_, server) = ctx.language_servers.first_key_value().unwrap();
+
     let mut new_selections = vec![];
     for (selection, cursor) in selections {
         let mut ranges = ranges.clone();
@@ -637,8 +658,11 @@ fn editor_object(
             } else if forward
                 && cur < matched_pos
                 && (cur.line < matched_pos.line || {
-                    let matched_lsp_pos =
-                        kakoune_position_to_lsp(&matched_pos, &document.text, ctx.offset_encoding);
+                    let matched_lsp_pos = kakoune_position_to_lsp(
+                        &matched_pos,
+                        &document.text,
+                        server.offset_encoding,
+                    );
                     let line = document.text.line(matched_lsp_pos.line as usize);
                     (matched_lsp_pos.character as usize) < line.len_chars()
                 })
@@ -708,6 +732,7 @@ fn flat_symbol_ranges<T: Symbol<T>>(
     symbols: Vec<T>,
     symbol_kinds_query: Vec<SymbolKind>,
 ) -> Vec<(KakouneRange, KakounePosition)> {
+    let (_, server) = ctx.language_servers.first_key_value().unwrap();
     fn walk<T, F>(
         result: &mut Vec<(KakouneRange, KakounePosition)>,
         symbol_kinds_query: &[SymbolKind],
@@ -728,7 +753,7 @@ fn flat_symbol_ranges<T: Symbol<T>>(
         }
     }
     let mut result = vec![];
-    let convert = |range| lsp_range_to_kakoune(&range, &document.text, ctx.offset_encoding);
+    let convert = |range| lsp_range_to_kakoune(&range, &document.text, server.offset_encoding);
     for s in symbols {
         walk(&mut result, &symbol_kinds_query, &convert, &s);
     }
@@ -745,14 +770,18 @@ pub fn document_symbol_menu(meta: EditorMeta, editor_params: EditorParams, ctx: 
     };
     ctx.call::<DocumentSymbolRequest, _>(
         meta,
-        req_params,
-        move |ctx: &mut Context, meta, result| {
-            let maybe_goto_symbol = GotoSymbolParams::deserialize(editor_params)
-                .unwrap()
-                .goto_symbol;
-            match maybe_goto_symbol {
-                Some(goto_symbol) => editor_document_symbol_goto(meta, goto_symbol, result, ctx),
-                None => editor_document_symbol_menu(meta, result, ctx),
+        RequestParams::All(vec![req_params]),
+        move |ctx: &mut Context, meta, mut result| {
+            if let Some((_, result)) = result.pop() {
+                let maybe_goto_symbol = GotoSymbolParams::deserialize(editor_params)
+                    .unwrap()
+                    .goto_symbol;
+                match maybe_goto_symbol {
+                    Some(goto_symbol) => {
+                        editor_document_symbol_goto(meta, goto_symbol, result, ctx)
+                    }
+                    None => editor_document_symbol_menu(meta, result, ctx),
+                }
             }
         },
     );
