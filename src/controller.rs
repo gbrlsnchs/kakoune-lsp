@@ -757,7 +757,7 @@ fn dispatch_server_notification(
             diagnostics::publish_diagnostics(server_name, params, ctx);
         }
         "$cquery/publishSemanticHighlighting" => {
-            cquery::publish_semantic_highlighting(params, ctx);
+            cquery::publish_semantic_highlighting(server_name, params, ctx);
         }
         "$ccls/publishSemanticHighlight" => {
             ccls::publish_semantic_highlighting(server_name, params, ctx);
