@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use super::code_action::execute_command_editor_command;
 use crate::capabilities::CAPABILITY_CODE_LENS;
 use crate::capabilities::CAPABILITY_EXECUTE_COMMANDS;
@@ -17,10 +19,15 @@ use lsp_types::*;
 use serde::Deserialize;
 
 pub fn text_document_code_lens(meta: EditorMeta, ctx: &mut Context) {
-    let (_, server) = ctx.language_servers.first_key_value().unwrap();
-    if !server_has_capability(server, CAPABILITY_CODE_LENS)
-        || !server_has_capability(server, CAPABILITY_EXECUTE_COMMANDS)
-    {
+    let eligible_servers: Vec<_> = ctx
+        .language_servers
+        .iter()
+        .filter(|(_, server)| {
+            server_has_capability(server, CAPABILITY_CODE_LENS)
+                && server_has_capability(server, CAPABILITY_EXECUTE_COMMANDS)
+        })
+        .collect();
+    if eligible_servers.is_empty() {
         return;
     }
 
@@ -34,17 +41,24 @@ pub fn text_document_code_lens(meta: EditorMeta, ctx: &mut Context) {
     ctx.call::<CodeLensRequest, _>(
         meta,
         RequestParams::All(vec![req_params]),
-        |ctx: &mut Context, meta, mut result| {
-            if let Some((_, result)) = result.pop() {
-                editor_code_lens(meta, result, ctx)
-            }
-        },
+        |ctx: &mut Context, meta, results| editor_code_lens(meta, results, ctx),
     );
 }
 
-fn editor_code_lens(meta: EditorMeta, result: Option<Vec<CodeLens>>, ctx: &mut Context) {
-    let mut lenses = result.unwrap_or_default();
-    lenses.sort_by_key(|lens| lens.range.start);
+fn editor_code_lens(
+    meta: EditorMeta,
+    results: Vec<(ServerName, Option<Vec<CodeLens>>)>,
+    ctx: &mut Context,
+) {
+    let mut lenses: Vec<_> = results
+        .into_iter()
+        .flat_map(|(server_name, v)| {
+            v.unwrap_or_default()
+                .into_iter()
+                .map(move |v| (server_name.clone(), v))
+        })
+        .collect();
+    lenses.sort_by_key(|(_, lens)| lens.range.start);
 
     let buffile = &meta.buffile;
     let document = match ctx.documents.get(buffile) {
@@ -55,10 +69,10 @@ fn editor_code_lens(meta: EditorMeta, result: Option<Vec<CodeLens>>, ctx: &mut C
         }
     };
     let version = document.version;
-    let (server_name, server) = ctx.language_servers.first_key_value().unwrap();
     let range_specs = lenses
         .iter()
-        .map(|lens| {
+        .map(|(server_name, lens)| {
+            let server = &ctx.language_servers[server_name];
             let label = lens.command.as_ref().map_or("", |v| &v.title);
             let position =
                 lsp_position_to_kakoune(&lens.range.start, &document.text, server.offset_encoding);
@@ -77,13 +91,7 @@ fn editor_code_lens(meta: EditorMeta, result: Option<Vec<CodeLens>>, ctx: &mut C
         })
         .join(" ");
 
-    ctx.code_lenses.insert(
-        meta.buffile.clone(),
-        lenses
-            .into_iter()
-            .map(|v| (server_name.clone(), v))
-            .collect(),
-    );
+    ctx.code_lenses.insert(meta.buffile.clone(), lenses);
 
     let line_flags = gather_line_flags(ctx, buffile).0;
     let command = formatdoc!(
@@ -113,28 +121,29 @@ pub fn resolve_and_perform_code_lens(meta: EditorMeta, params: EditorParams, ctx
         Some(document) => document,
         None => return,
     };
-    let (_, server) = ctx.language_servers.first_key_value().unwrap();
-    let range = kakoune_range_to_lsp(&range, &document.text, server.offset_encoding);
 
-    if let Some((_, lens)) = ctx
+    if let Some((server_name, lens)) = ctx
         .code_lenses
         .get(&meta.buffile)
         .and_then(|lenses| {
-            lenses
-                .iter()
-                .find(|(_, lens)| ranges_touch_same_line(lens.range, range))
+            lenses.iter().find(|(server_name, lens)| {
+                let ServerSettings {
+                    offset_encoding, ..
+                } = &ctx.language_servers[server_name];
+                let range = kakoune_range_to_lsp(&range, &document.text, *offset_encoding);
+                ranges_touch_same_line(lens.range, range)
+            })
         })
         .filter(|(_, lens)| lens.command.is_none())
         .cloned()
     {
+        let mut req_params = HashMap::new();
+        req_params.insert(server_name, vec![lens]);
+
         ctx.call::<CodeLensResolve, _>(
             meta,
-            RequestParams::All(vec![lens]),
-            |ctx: &mut Context, meta, mut lens| {
-                if let Some((_, lens)) = lens.pop() {
-                    perform_code_lens(meta, &[&lens], ctx)
-                }
-            },
+            RequestParams::Each(req_params),
+            |ctx: &mut Context, meta, results| perform_code_lens(meta, &results, ctx),
         );
         return;
     }
@@ -145,8 +154,14 @@ pub fn resolve_and_perform_code_lens(meta: EditorMeta, params: EditorParams, ctx
     };
     let lenses = lenses
         .iter()
-        .filter(|(_, lens)| ranges_touch_same_line(lens.range, range))
-        .map(|(_, lens)| lens)
+        .filter(|(server_name, lens)| {
+            let ServerSettings {
+                offset_encoding, ..
+            } = &ctx.language_servers[server_name];
+            let range = kakoune_range_to_lsp(&range, &document.text, *offset_encoding);
+            ranges_touch_same_line(lens.range, range)
+        })
+        .map(|(a, b)| (a.clone(), b.clone()))
         .collect::<Vec<_>>();
 
     if lenses.is_empty() {
@@ -157,13 +172,13 @@ pub fn resolve_and_perform_code_lens(meta: EditorMeta, params: EditorParams, ctx
     perform_code_lens(meta, &lenses, ctx);
 }
 
-fn perform_code_lens(meta: EditorMeta, lenses: &[&CodeLens], ctx: &Context) {
+fn perform_code_lens(meta: EditorMeta, lenses: &[(ServerName, CodeLens)], ctx: &Context) {
     let command = format!(
         "lsp-perform-code-lens {}",
         lenses
             .iter()
-            .filter(|lens| lens.command.is_some())
-            .map(|lens| {
+            .filter(|(_, lens)| lens.command.is_some())
+            .map(|(_, lens)| {
                 let command = lens.command.as_ref().unwrap();
                 format!(
                     "{} {}",
