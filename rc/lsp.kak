@@ -1349,7 +1349,7 @@ define-command -hidden lsp-show-error -params 1 -docstring "Render error" %{
     info "LSP: %arg{1}"
 }
 
-define-command -hidden lsp-show-goto-buffer -params 4 %{
+define-command -hidden lsp-show-goto-buffer -params 4..5 %{
     evaluate-commands -save-regs '"' -try-client %opt[toolsclient] %{
         edit! -scratch %arg{1}
         set-option buffer filetype %arg{2}
@@ -1358,26 +1358,24 @@ define-command -hidden lsp-show-goto-buffer -params 4 %{
         set-register '"' %arg{4}
         execute-keys Rgg
     }
+    try %{
+        evaluate-commands -try-client %opt[toolsclient] %{
+            set-option buffer jump_current_line %arg{5}
+            execute-keys %arg{5} g
+        }
+    }
 }
 
 define-command -hidden lsp-show-goto-choices -params 2 -docstring "Render goto choices" %{
     lsp-show-goto-buffer *goto* lsp-goto %arg{@}
 }
 
-define-command -hidden lsp-initial-goto-position -params 1 %{
-    evaluate-commands -try-client %opt[toolsclient] %{
-        set-option buffer jump_current_line %arg{1}
-        execute-keys %arg{1} g
-    }
-}
-
 define-command -hidden lsp-show-document-symbol -params 4 -docstring "Render document symbols" %{
-    lsp-show-goto-buffer *goto* lsp-document-symbol %arg{1} %arg{3}
+    lsp-show-goto-buffer *goto* lsp-document-symbol %arg{1} %arg{3} %arg{4}
     evaluate-commands -try-client %opt[toolsclient] %{
         set-option -add buffer path %arg{1} # for gf on the file name
         set-option buffer lsp_buffile %arg{2}
     }
-    lsp-initial-goto-position %arg{4}
 }
 
 define-command -hidden lsp-show-incoming-calls -params 2 -docstring "Render callers" %{

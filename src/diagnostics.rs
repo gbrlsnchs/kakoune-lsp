@@ -3,7 +3,6 @@ use crate::markup::escape_kakoune_markup;
 use crate::position::*;
 use crate::types::*;
 use crate::util::*;
-use indoc::formatdoc;
 use itertools::EitherOrBoth;
 use itertools::Itertools;
 use jsonrpc_core::Params;
@@ -365,9 +364,8 @@ pub fn editor_diagnostics(meta: EditorMeta, params: PositionParams, ctx: &mut Co
                 .collect::<Vec<_>>()
         })
         .join("\n");
-    let command = formatdoc!(
-        "lsp-show-goto-buffer *diagnostics* lsp-diagnostics {} {}
-         lsp-initial-goto-position {}",
+    let command = format!(
+        "lsp-show-goto-buffer *diagnostics* lsp-diagnostics {} {} {}",
         editor_quote(ctx.main_root(&meta)),
         editor_quote(&content),
         goto_buffer_line.unwrap_or(1)
