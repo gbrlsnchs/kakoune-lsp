@@ -361,7 +361,7 @@ fn run_main() -> Result<(), ()> {
 
     for signal in [SIGHUP, SIGINT, SIGQUIT, SIGPIPE, SIGTERM] {
         unsafe {
-            libc::signal(signal, handle_interrupt as libc::sighandler_t);
+            libc::signal(signal, handle_interrupt as *const () as libc::sighandler_t);
         }
     }
 
