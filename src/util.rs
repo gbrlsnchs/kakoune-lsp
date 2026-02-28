@@ -1,5 +1,8 @@
 use crate::types::*;
+use lsp_types::Uri;
 use std::os::unix::fs::DirBuilderExt;
+use std::path::PathBuf;
+use std::str::FromStr;
 use std::{collections::HashMap, path::Path};
 use std::{env, fs, io, path};
 
@@ -126,4 +129,19 @@ where
         .ok()
         .and_then(|p| p.to_str())
         .unwrap_or(target)
+}
+
+/// Convert a filesystem path to a file:// URI.
+pub fn file_path_to_uri(path: &str) -> Uri {
+    let url = url::Url::from_file_path(path).unwrap();
+    let s = url.as_str().replace('[', "%5B").replace(']', "%5D");
+    Uri::from_str(&s).unwrap()
+}
+
+/// Parse a file:// URI and return the filesystem path.
+pub fn uri_to_file_path(uri: &Uri) -> PathBuf {
+    url::Url::parse(uri.as_str())
+        .ok()
+        .and_then(|url| url.to_file_path().ok())
+        .unwrap_or_else(|| PathBuf::from(uri.path().as_str()))
 }

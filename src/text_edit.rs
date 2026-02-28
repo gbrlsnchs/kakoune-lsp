@@ -2,6 +2,7 @@ use crate::context::*;
 use crate::editor_transport::ToEditorSender;
 use crate::position::*;
 use crate::types::*;
+use crate::util::uri_to_file_path;
 use crate::util::*;
 use indoc::formatdoc;
 #[cfg(test)]
@@ -71,7 +72,7 @@ impl TextEditish<OneOf<TextEdit, AnnotatedTextEdit>> for OneOf<TextEdit, Annotat
 pub fn apply_text_edits<T: TextEditish<T>>(
     server_id: ServerId,
     meta: EditorMeta,
-    uri: Url,
+    uri: Uri,
     edits: Vec<T>,
     ctx: &mut Context,
 ) {
@@ -88,16 +89,15 @@ pub fn apply_text_edits_try_deferred<T: TextEditish<T>>(
     command: &mut String,
     server_id: ServerId,
     meta: &EditorMeta,
-    uri: Url,
+    uri: Uri,
     edits: Vec<T>,
     ctx: &mut Context,
 ) {
-    let path = uri.to_file_path().ok().unwrap();
-    let buffile = path.to_str().unwrap();
-    if let Some(document) = ctx.documents.get(buffile) {
+    let buffile = uri_to_file_path(&uri).to_string_lossy().into_owned();
+    if let Some(document) = ctx.documents.get(&buffile) {
         // Write hidden buffers unless they were already dirty.
         let write_to_disk = buffile != meta.buffile
-            && fs::read_to_string(buffile)
+            && fs::read_to_string(&buffile)
                 .map(|disk_contents| disk_contents == document.text)
                 .unwrap_or(false);
         let server = ctx.server(server_id);
@@ -119,22 +119,21 @@ pub fn apply_text_edits_try_deferred<T: TextEditish<T>>(
     {
         error!(
             ctx.to_editor(),
-            "Failed to apply edits to file {} ({})", &uri, e
+            "Failed to apply edits to file {} ({})", buffile, e
         );
     }
 }
 
 pub fn apply_text_edits_to_file<T: TextEditish<T>>(
     server_id: ServerId,
-    uri: &Url,
+    uri: &Uri,
     text_edits: Vec<T>,
     language_id: &LanguageId,
     ctx: &mut Context,
 ) -> std::io::Result<()> {
-    let path = uri.to_file_path().unwrap();
-    let filename = path.to_str().unwrap();
+    let filename = uri_to_file_path(uri).to_string_lossy().into_owned();
 
-    let path = std::ffi::CString::new(filename).unwrap();
+    let path = std::ffi::CString::new(filename.as_str()).unwrap();
     let mut stat;
     if unsafe {
         stat = std::mem::zeroed();
@@ -147,7 +146,7 @@ pub fn apply_text_edits_to_file<T: TextEditish<T>>(
         ));
     }
 
-    let file = File::open(filename)?;
+    let file = File::open(&filename)?;
     let text = Rope::from_reader(BufReader::new(file))?;
 
     let (temp_path, mut temp_file) = {
@@ -429,7 +428,7 @@ pub fn lsp_text_edits_to_kakoune<T: TextEditish<T>>(
 pub fn apply_text_edits_to_buffer<T: TextEditish<T>>(
     to_editor: &ToEditorSender,
     client: &Option<ClientId>,
-    uri: Option<Url>,
+    uri: Option<Uri>,
     text_edits: Vec<T>,
     text: &Rope,
     offset_encoding: OffsetEncoding,
@@ -457,9 +456,7 @@ pub fn apply_text_edits_to_buffer<T: TextEditish<T>>(
         );
     }
 
-    let maybe_buffile = uri
-        .and_then(|uri| uri.to_file_path().ok())
-        .and_then(|path| path.to_str().map(|buffile| buffile.to_string()));
+    let maybe_buffile = uri.map(|uri| uri_to_file_path(&uri).to_string_lossy().into_owned());
 
     let client = match client {
         None => {

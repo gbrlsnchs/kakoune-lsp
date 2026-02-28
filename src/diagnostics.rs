@@ -2,6 +2,7 @@ use crate::context::*;
 use crate::markup::escape_kakoune_markup;
 use crate::position::*;
 use crate::types::*;
+use crate::util::uri_to_file_path;
 use crate::util::*;
 use itertools::EitherOrBoth;
 use itertools::Itertools;
@@ -12,11 +13,10 @@ use std::fmt::Write as _;
 
 pub fn publish_diagnostics(server_id: ServerId, params: Params, ctx: &mut Context) {
     let params: PublishDiagnosticsParams = params.parse().expect("Failed to parse params");
-    let path = params.uri.to_file_path().unwrap();
-    let buffile = path.to_str().unwrap();
+    let buffile = uri_to_file_path(&params.uri).to_string_lossy().into_owned();
     let mut diagnostics: Vec<_> = ctx
         .diagnostics
-        .remove(buffile)
+        .remove(&buffile)
         .unwrap_or_default()
         .into_iter()
         .filter(|(id, _)| id != &server_id)
@@ -27,14 +27,14 @@ pub fn publish_diagnostics(server_id: ServerId, params: Params, ctx: &mut Contex
         .map(|d| (server_id, d))
         .collect();
     diagnostics.extend(params);
-    ctx.diagnostics.insert(buffile.to_string(), diagnostics);
-    let document = ctx.documents.get(buffile);
+    ctx.diagnostics.insert(buffile.clone(), diagnostics);
+    let document = ctx.documents.get(&buffile);
     if document.is_none() {
         return;
     }
     let document = document.unwrap();
     let version = document.version;
-    let diagnostics = &ctx.diagnostics[buffile];
+    let diagnostics = &ctx.diagnostics[&buffile];
     let diagnostics_orderd_by_severity = diagnostics
         .iter()
         .sorted_unstable_by_key(|(_, x)| x.severity)
@@ -164,7 +164,7 @@ pub fn publish_diagnostics(server_id: ServerId, params: Params, ctx: &mut Contex
         .join(" ");
 
     let (line_flags, error_count, hint_count, info_count, warning_count) =
-        gather_line_flags(ctx, buffile);
+        gather_line_flags(ctx, &buffile);
 
     // Always show a space on line one if no other highlighter is there,
     // to make sure the column always has the right width
@@ -182,7 +182,7 @@ pub fn publish_diagnostics(server_id: ServerId, params: Params, ctx: &mut Contex
     );
     let command = format!(
         "evaluate-commands -buffer {} %§{}§",
-        editor_quote(buffile),
+        editor_quote(&buffile),
         command.replace('§', "§§")
     );
     ctx.exec(EditorMeta::default(), command);
@@ -388,17 +388,17 @@ pub fn format_related_information(
                 + &infos
                     .iter()
                     .map(|info| {
-                        let path = info.location.uri.to_file_path().unwrap();
-                        let filename = path.to_str().unwrap();
+                        let filename = uri_to_file_path(&info.location.uri);
+                        let filename = filename.to_string_lossy();
                         let p = get_kakoune_position_with_fallback(
                             server,
-                            filename,
+                            &filename,
                             info.location.range.start,
                             ctx,
                         );
                         format!(
                             "{}:{}:{}: {}{}",
-                            short_file_path(filename, ctx.main_root(meta)),
+                            short_file_path(&filename, ctx.main_root(meta)),
                             p.line,
                             p.column,
                             &if label_with_server {
