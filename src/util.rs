@@ -1,5 +1,6 @@
 use crate::types::*;
 use lsp_types::Uri;
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::os::unix::fs::DirBuilderExt;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -144,4 +145,24 @@ pub fn uri_to_file_path(uri: &Uri) -> PathBuf {
         .ok()
         .and_then(|url| url.to_file_path().ok())
         .unwrap_or_else(|| PathBuf::from(uri.path().as_str()))
+}
+
+/// Creates a temporary file for a virtual defintion (for example, used by Deno LSP, where some
+/// defitinions are not in disk when using goto).
+pub fn create_virtual_definition_file(name: &str, uri: &Uri, content: &str) -> PathBuf {
+    let path = uri_to_file_path(uri);
+    let ext = path.extension().and_then(|p| p.to_str()).unwrap_or("ts");
+    let mut hasher = DefaultHasher::new();
+    uri.as_str().hash(&mut hasher);
+    let hash = hasher.finish();
+    let mut tmp_path = temp_dir();
+
+    tmp_path.push("virtual");
+    tmp_path.push(name);
+    let _ = std::fs::create_dir_all(&tmp_path);
+
+    tmp_path.push(format!("{:x}.{}", hash, ext));
+    let _ = std::fs::write(&tmp_path, &content);
+
+    tmp_path
 }
