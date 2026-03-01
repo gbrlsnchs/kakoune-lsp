@@ -664,6 +664,10 @@ hook -group lsp-scratch-buffers global WinDisplay \*debug\* %{
     lsp-block-in-buffer
 }
 
+hook -group lsp-virtual-documents global BufCreate .*/kakoune-lsp/.*/virtual/.*/[0-9a-f]+\..* %{
+    set-option buffer readonly true
+}
+
 hook -group lsp-option-changed global GlobalSetOption lsp_debug=.* %{
     lsp-if-running %{
         lsp-send kakoune/did-change-option %val{hook_param}

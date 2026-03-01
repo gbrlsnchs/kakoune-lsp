@@ -3,6 +3,7 @@ use crate::capabilities::{
     CAPABILITY_REFERENCES, CAPABILITY_TYPE_DEFINITION,
 };
 use crate::context::{Context, RequestParams};
+use crate::language_features::deno;
 use crate::position::*;
 use crate::types::{BackwardKakouneRange, EditorMeta, KakouneRange, PositionParams, ServerId};
 use crate::util::{editor_quote, file_path_to_uri, short_file_path, uri_to_file_path};
@@ -54,10 +55,10 @@ pub fn goto(
     match locations.len() {
         0 => {}
         1 => {
-            goto_location(meta, &locations[0], ctx);
+            goto_location(meta, locations.into_iter().next().unwrap(), ctx);
         }
         _ => {
-            goto_locations(meta, &locations, ctx);
+            goto_locations(meta, locations, ctx);
         }
     }
 }
@@ -73,16 +74,24 @@ pub fn edit_at_range(buffile: &str, range: KakouneRange, in_normal_mode: bool) -
     )
 }
 
-fn goto_location(
-    meta: EditorMeta,
-    (server_id, Location { uri, range }): &(ServerId, Location),
-    ctx: &mut Context,
-) {
-    let path_str = uri_to_file_path(uri);
+fn goto_location(meta: EditorMeta, (server_id, location): (ServerId, Location), ctx: &mut Context) {
+    let Location { uri, range } = location;
+
+    // Handle virtual location.
+    {
+        if uri.as_str().starts_with("deno:") {
+            deno::handle_virtual_locations(&meta, ctx, vec![(server_id, Location { uri, range })]);
+            return;
+        }
+
+        // NOTE: Handlers for other languages should be added here.
+    }
+
+    let path_str = uri_to_file_path(&uri);
     let path_str = path_str.to_string_lossy();
     if let Some(contents) = get_file_contents(&path_str, ctx) {
-        let server = ctx.server(*server_id);
-        let range = lsp_range_to_kakoune(range, &contents, server.offset_encoding);
+        let server = ctx.server(server_id);
+        let range = lsp_range_to_kakoune(&range, &contents, server.offset_encoding);
         let command = format!(
             "evaluate-commands -try-client %opt{{jumpclient}} -- {}",
             editor_quote(&edit_at_range(&path_str, range, true)),
@@ -91,7 +100,21 @@ fn goto_location(
     }
 }
 
-fn goto_locations(meta: EditorMeta, locations: &[(ServerId, Location)], ctx: &mut Context) {
+fn goto_locations(meta: EditorMeta, locations: Vec<(ServerId, Location)>, ctx: &mut Context) {
+    let (virtual_locations, locations): (Vec<_>, Vec<_>) = locations
+        .into_iter()
+        .partition(|(_, Location { uri, .. })| !uri.as_str().starts_with("file:"));
+
+    // Handle virtual locations.
+    {
+        let (deno_locations, _): (Vec<_>, Vec<_>) = virtual_locations
+            .into_iter()
+            .partition(|(_, Location { uri, .. })| uri.as_str().starts_with("deno:"));
+        deno::handle_virtual_locations(&meta, ctx, deno_locations);
+
+        // NOTE: Handlers for other languages should be added here.
+    }
+
     let select_location = locations
         .iter()
         .chunk_by(|(_, Location { uri, .. })| uri_to_file_path(uri).to_string_lossy().into_owned())
