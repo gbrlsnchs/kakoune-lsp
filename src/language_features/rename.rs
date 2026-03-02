@@ -1,7 +1,6 @@
 use crate::context::*;
 use crate::position::*;
 use crate::types::*;
-use crate::util::file_path_to_uri;
 
 use lsp_types::request::*;
 use lsp_types::*;
@@ -9,6 +8,7 @@ use lsp_types::*;
 use super::super::workspace;
 
 pub fn text_document_rename(meta: EditorMeta, params: TextDocumentRenameParams, ctx: &mut Context) {
+    let uri = ctx.uri_for_buffer(&meta.buffile);
     let req_params = ctx
         .servers(&meta)
         .map(|(server_id, server_settings)| {
@@ -16,9 +16,7 @@ pub fn text_document_rename(meta: EditorMeta, params: TextDocumentRenameParams, 
                 server_id,
                 vec![RenameParams {
                     text_document_position: TextDocumentPositionParams {
-                        text_document: TextDocumentIdentifier {
-                            uri: file_path_to_uri(&meta.buffile),
-                        },
+                        text_document: TextDocumentIdentifier { uri: uri.clone() },
                         position: get_lsp_position(
                             server_settings,
                             &meta.buffile,
