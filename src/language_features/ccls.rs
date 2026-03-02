@@ -35,15 +35,14 @@ impl Request for NavigateRequest {
 }
 
 pub fn navigate(meta: EditorMeta, params: EditorNavigateParams, ctx: &mut Context) {
+    let uri = ctx.uri_for_buffer(&meta.buffile);
     let req_params = ctx
         .servers(&meta)
         .map(|(server_id, server_settings)| {
             (
                 server_id,
                 vec![NavigateParams {
-                    text_document: TextDocumentIdentifier {
-                        uri: file_path_to_uri(&meta.buffile),
-                    },
+                    text_document: TextDocumentIdentifier { uri: uri.clone() },
                     position: get_lsp_position(
                         server_settings,
                         &meta.buffile,
@@ -85,15 +84,14 @@ impl Request for VarsRequest {
 }
 
 pub fn vars(meta: EditorMeta, params: PositionParams, ctx: &mut Context) {
+    let uri = ctx.uri_for_buffer(&meta.buffile);
     let req_params = ctx
         .servers(&meta)
         .map(|(server_id, server_settings)| {
             (
                 server_id,
                 vec![VarsParams {
-                    text_document: TextDocumentIdentifier {
-                        uri: file_path_to_uri(&meta.buffile),
-                    },
+                    text_document: TextDocumentIdentifier { uri: uri.clone() },
                     position: get_lsp_position(
                         server_settings,
                         &meta.buffile,
@@ -147,15 +145,14 @@ impl Request for InheritanceRequest {
 }
 
 pub fn inheritance(meta: EditorMeta, params: EditorInheritanceParams, ctx: &mut Context) {
+    let uri = ctx.uri_for_buffer(&meta.buffile);
     let req_params = ctx
         .servers(&meta)
         .map(|(server_id, server_settings)| {
             (
                 server_id,
                 vec![InheritanceParams {
-                    text_document: TextDocumentIdentifier {
-                        uri: file_path_to_uri(&meta.buffile),
-                    },
+                    text_document: TextDocumentIdentifier { uri: uri.clone() },
                     position: get_lsp_position(
                         server_settings,
                         &meta.buffile,
@@ -209,15 +206,14 @@ impl Request for CallRequest {
 }
 
 pub fn call(meta: EditorMeta, params: EditorCallParams, ctx: &mut Context) {
+    let uri = ctx.uri_for_buffer(&meta.buffile);
     let req_params = ctx
         .servers(&meta)
         .map(|(server_id, server_settings)| {
             (
                 server_id,
                 vec![CallParams {
-                    text_document: TextDocumentIdentifier {
-                        uri: file_path_to_uri(&meta.buffile),
-                    },
+                    text_document: TextDocumentIdentifier { uri: uri.clone() },
                     position: get_lsp_position(
                         server_settings,
                         &meta.buffile,
@@ -270,15 +266,14 @@ impl Request for MemberRequest {
 }
 
 pub fn member(meta: EditorMeta, params: EditorMemberParams, ctx: &mut Context) {
+    let uri = ctx.uri_for_buffer(&meta.buffile);
     let req_params = ctx
         .servers(&meta)
         .map(|(server_id, server_settings)| {
             (
                 server_id,
                 vec![MemberParams {
-                    text_document: TextDocumentIdentifier {
-                        uri: file_path_to_uri(&meta.buffile),
-                    },
+                    text_document: TextDocumentIdentifier { uri: uri.clone() },
                     position: get_lsp_position(
                         server_settings,
                         &meta.buffile,

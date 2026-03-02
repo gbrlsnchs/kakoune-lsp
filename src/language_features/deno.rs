@@ -73,6 +73,8 @@ pub fn handle_virtual_locations(
                 .map(|(_, uri)| {
                     let content = content_map.get(uri).unwrap();
                     let tmp_path = util::create_virtual_definition_file("deno", uri, content);
+                    let tmp_str = tmp_path.to_string_lossy().into_owned();
+                    ctx.virtual_documents.insert(tmp_str, uri.clone());
                     (uri.as_str(), tmp_path)
                 })
                 .collect();

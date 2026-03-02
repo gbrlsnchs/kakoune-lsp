@@ -2,6 +2,7 @@ use crate::editor_transport::{self, ToEditorSender};
 use crate::language_server_transport::LanguageServerTransport;
 use crate::text_sync::CompiledFileSystemWatcher;
 use crate::thread_worker::Worker;
+use crate::util::file_path_to_uri;
 use crate::{filetype_to_language_id_map, types::*};
 use jsonrpc_core::{self, Call, Error, Failure, Id, Output, Success, Value, Version};
 use lsp_types::notification::{Cancel, Notification};
@@ -78,6 +79,8 @@ pub struct Context {
     pub config: Config,
     pub diagnostics: HashMap<String, Vec<(ServerId, Diagnostic)>>,
     pub documents: HashMap<String, Document>,
+    /// This is used for mapping temporary source files to their respective virtual paths.
+    pub virtual_documents: HashMap<String, Uri>,
     pub dynamic_config: DynamicConfig,
     pub inlay_hints: HashMap<String, Vec<(ServerId, InlayHint)>>,
     pub language_servers: BTreeMap<ServerId, ServerSettings>,
@@ -118,6 +121,7 @@ impl Context {
             config,
             diagnostics: Default::default(),
             documents: Default::default(),
+            virtual_documents: Default::default(),
             dynamic_config: DynamicConfig::default(),
             inlay_hints: Default::default(),
             language_servers: BTreeMap::new(),
@@ -419,6 +423,13 @@ impl Context {
         message: impl AsRef<str>,
     ) {
         editor_transport::show_error(&self.to_editor, meta, response_fifo, message);
+    }
+
+    pub fn uri_for_buffer(&self, path: &str) -> Uri {
+        if let Some(uri) = self.virtual_documents.get(path) {
+            return uri.clone();
+        }
+        file_path_to_uri(path)
     }
 
     fn next_batch_id(&mut self) -> BatchNumber {

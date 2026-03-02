@@ -25,15 +25,14 @@ pub fn text_document_document_symbol(meta: EditorMeta, params: PositionParams, c
         .servers(&meta)
         .filter(|srv| attempt_server_capability(ctx, *srv, &meta, CAPABILITY_DOCUMENT_SYMBOL))
         .collect();
+    let uri = ctx.uri_for_buffer(&meta.buffile);
     let req_params = eligible_servers
         .into_iter()
         .map(|(server_id, _)| {
             (
                 server_id,
                 vec![DocumentSymbolParams {
-                    text_document: TextDocumentIdentifier {
-                        uri: file_path_to_uri(&meta.buffile),
-                    },
+                    text_document: TextDocumentIdentifier { uri: uri.clone() },
                     partial_result_params: Default::default(),
                     work_done_progress_params: Default::default(),
                 }],
@@ -61,15 +60,14 @@ pub fn next_or_prev_symbol(meta: EditorMeta, params: NextOrPrevSymbolParams, ctx
         .servers(&meta)
         .filter(|srv| attempt_server_capability(ctx, *srv, &meta, CAPABILITY_DOCUMENT_SYMBOL))
         .collect();
+    let uri = ctx.uri_for_buffer(&meta.buffile);
     let req_params = eligible_servers
         .into_iter()
         .map(|(server_id, _)| {
             (
                 server_id,
                 vec![DocumentSymbolParams {
-                    text_document: TextDocumentIdentifier {
-                        uri: file_path_to_uri(&meta.buffile),
-                    },
+                    text_document: TextDocumentIdentifier { uri: uri.clone() },
                     partial_result_params: Default::default(),
                     work_done_progress_params: Default::default(),
                 }],
@@ -520,7 +518,7 @@ fn editor_next_or_prev_for_details(
         vec![HoverParams {
             text_document_position_params: TextDocumentPositionParams {
                 text_document: TextDocumentIdentifier {
-                    uri: file_path_to_uri(&meta.buffile),
+                    uri: ctx.uri_for_buffer(&meta.buffile),
                 },
                 position: get_lsp_position(server, &meta.buffile, &symbol_position, ctx).unwrap(),
             },
@@ -732,15 +730,14 @@ pub fn object(meta: EditorMeta, params: ObjectParams, ctx: &mut Context) {
         .servers(&meta)
         .filter(|srv| attempt_server_capability(ctx, *srv, &meta, CAPABILITY_DOCUMENT_SYMBOL))
         .collect();
+    let uri = ctx.uri_for_buffer(&meta.buffile);
     let req_params = eligible_servers
         .into_iter()
         .map(|(server_id, _)| {
             (
                 server_id,
                 vec![DocumentSymbolParams {
-                    text_document: TextDocumentIdentifier {
-                        uri: file_path_to_uri(&meta.buffile),
-                    },
+                    text_document: TextDocumentIdentifier { uri: uri.clone() },
                     partial_result_params: Default::default(),
                     work_done_progress_params: Default::default(),
                 }],
@@ -963,15 +960,14 @@ pub fn document_symbol_menu(meta: EditorMeta, params: GotoSymbolParams, ctx: &mu
         .servers(&meta)
         .filter(|srv| attempt_server_capability(ctx, *srv, &meta, CAPABILITY_DOCUMENT_SYMBOL))
         .collect();
+    let uri = ctx.uri_for_buffer(&meta.buffile);
     let req_params = eligible_servers
         .into_iter()
         .map(|(server_id, _)| {
             (
                 server_id,
                 vec![DocumentSymbolParams {
-                    text_document: TextDocumentIdentifier {
-                        uri: file_path_to_uri(&meta.buffile),
-                    },
+                    text_document: TextDocumentIdentifier { uri: uri.clone() },
                     partial_result_params: Default::default(),
                     work_done_progress_params: Default::default(),
                 }],
@@ -1149,15 +1145,14 @@ pub fn breadcrumbs(meta: EditorMeta, params: BreadcrumbsParams, ctx: &mut Contex
         .servers(&meta)
         .filter(|srv| attempt_server_capability(ctx, *srv, &meta, CAPABILITY_DOCUMENT_SYMBOL))
         .collect();
+    let uri = ctx.uri_for_buffer(&meta.buffile);
     let req_params = eligible_servers
         .into_iter()
         .map(|(server_id, _)| {
             (
                 server_id,
                 vec![DocumentSymbolParams {
-                    text_document: TextDocumentIdentifier {
-                        uri: file_path_to_uri(&meta.buffile),
-                    },
+                    text_document: TextDocumentIdentifier { uri: uri.clone() },
                     partial_result_params: Default::default(),
                     work_done_progress_params: Default::default(),
                 }],

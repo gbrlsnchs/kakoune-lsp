@@ -6,7 +6,7 @@ use crate::context::{Context, RequestParams};
 use crate::language_features::deno;
 use crate::position::*;
 use crate::types::{BackwardKakouneRange, EditorMeta, KakouneRange, PositionParams, ServerId};
-use crate::util::{editor_quote, file_path_to_uri, short_file_path, uri_to_file_path};
+use crate::util::{editor_quote, short_file_path, uri_to_file_path};
 use indoc::formatdoc;
 use itertools::Itertools;
 use lsp_types::request::{
@@ -165,6 +165,7 @@ pub fn text_document_definition(
     params: PositionParams,
     ctx: &mut Context,
 ) {
+    let uri = ctx.uri_for_buffer(&meta.buffile);
     let eligible_servers: Vec<_> = ctx
         .servers(&meta)
         .filter(|srv| attempt_server_capability(ctx, *srv, &meta, CAPABILITY_DEFINITION))
@@ -183,9 +184,7 @@ pub fn text_document_definition(
                 server_id,
                 vec![GotoDefinitionParams {
                     text_document_position_params: TextDocumentPositionParams {
-                        text_document: TextDocumentIdentifier {
-                            uri: file_path_to_uri(&meta.buffile),
-                        },
+                        text_document: TextDocumentIdentifier { uri: uri.clone() },
                         position: get_lsp_position(
                             server_settings,
                             &meta.buffile,
@@ -215,6 +214,7 @@ pub fn text_document_definition(
 }
 
 pub fn text_document_implementation(meta: EditorMeta, params: PositionParams, ctx: &mut Context) {
+    let uri = ctx.uri_for_buffer(&meta.buffile);
     let eligible_servers: Vec<_> = ctx
         .servers(&meta)
         .filter(|srv| attempt_server_capability(ctx, *srv, &meta, CAPABILITY_IMPLEMENTATION))
@@ -233,9 +233,7 @@ pub fn text_document_implementation(meta: EditorMeta, params: PositionParams, ct
                 server_id,
                 vec![GotoDefinitionParams {
                     text_document_position_params: TextDocumentPositionParams {
-                        text_document: TextDocumentIdentifier {
-                            uri: file_path_to_uri(&meta.buffile),
-                        },
+                        text_document: TextDocumentIdentifier { uri: uri.clone() },
                         position: get_lsp_position(
                             server_settings,
                             &meta.buffile,
@@ -258,6 +256,7 @@ pub fn text_document_implementation(meta: EditorMeta, params: PositionParams, ct
 }
 
 pub fn text_document_type_definition(meta: EditorMeta, params: PositionParams, ctx: &mut Context) {
+    let uri = ctx.uri_for_buffer(&meta.buffile);
     let eligible_servers: Vec<_> = ctx
         .servers(&meta)
         .filter(|srv| attempt_server_capability(ctx, *srv, &meta, CAPABILITY_TYPE_DEFINITION))
@@ -276,9 +275,7 @@ pub fn text_document_type_definition(meta: EditorMeta, params: PositionParams, c
                 server_id,
                 vec![GotoDefinitionParams {
                     text_document_position_params: TextDocumentPositionParams {
-                        text_document: TextDocumentIdentifier {
-                            uri: file_path_to_uri(&meta.buffile),
-                        },
+                        text_document: TextDocumentIdentifier { uri: uri.clone() },
                         position: get_lsp_position(
                             server_settings,
                             &meta.buffile,
@@ -301,6 +298,7 @@ pub fn text_document_type_definition(meta: EditorMeta, params: PositionParams, c
 }
 
 pub fn text_document_references(meta: EditorMeta, params: PositionParams, ctx: &mut Context) {
+    let uri = ctx.uri_for_buffer(&meta.buffile);
     let eligible_servers: Vec<_> = ctx
         .servers(&meta)
         .filter(|srv| attempt_server_capability(ctx, *srv, &meta, CAPABILITY_REFERENCES))
@@ -319,9 +317,7 @@ pub fn text_document_references(meta: EditorMeta, params: PositionParams, ctx: &
                 server_id,
                 vec![ReferenceParams {
                     text_document_position: TextDocumentPositionParams {
-                        text_document: TextDocumentIdentifier {
-                            uri: file_path_to_uri(&meta.buffile),
-                        },
+                        text_document: TextDocumentIdentifier { uri: uri.clone() },
                         position: get_lsp_position(
                             server_settings,
                             &meta.buffile,
